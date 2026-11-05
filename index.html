@@ -207,8 +207,13 @@ form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flerv
       <button type="button" class="btn ghost sm" data-act="pickname" style="white-space:nowrap">📁 Velg fil</button></div>
     <input type="file" id="e_videofile" accept="video/*" hidden>
     <div class="small muted" style="margin-top:4px">Spilles av på storskjermen når tiden er ute, og fasiten vises når videoen er ferdig. Velger du en fil, lagres bare filnavnet. Selve filen velger du på storskjerm-PC-en når showet starter, så den lastes aldri opp.</div>
-    <label>Poeng for riktig / nærmest</label>
-    <input id="e_pts" type="number" min="0" step="1" value="3">
+    <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
+      <div style="flex:1"><label>Poeng for riktig / nærmest</label>
+      <input id="e_pts" type="number" min="0" step="1" value="3"></div>
+      <div style="flex:1"><label>Svartid (sekunder)</label>
+      <input id="e_time" type="number" min="0" step="5" value="30"></div>
+    </div>
+    <div class="small muted" style="margin-top:4px">Nedtellingen starter automatisk når spørsmålet vises. 0 = ingen tidsbegrensning.</div>
     <div class="small muted" style="margin-top:12px">🔒 Fasiten lagres skjult og vises ikke for lagene før du trykker «Vis fasit».</div>
     <div class="row" style="margin-top:20px;justify-content:flex-end">
       <button type="button" class="btn ghost" data-act="edcancel">Avbryt</button>
@@ -299,7 +304,12 @@ function ranked(){return teams().map(t=>({...t,total:total(t.id)})).sort((a,b)=>
 const expired=()=>{const g=game();return !!g.deadline&&now()>g.deadline};
 const ACTIVE=['open','locked','video','reveal'];
 const lockPhase=qid=>S.secret?.[qid]?.video?'video':'locked';
-async function doReveal(qid){const sec=S.secret?.[qid];if(sec)await store.set('revealed/'+qid,sec);await store.update('game',{phase:'reveal',deadline:null})}
+async function doReveal(qid){
+  const sec=S.secret?.[qid],q=qById(qid),ans=answersFor(qid);
+  if(q&&Object.keys(ans).length)await store.update('scores/'+qid,suggest(q,ans));
+  if(sec)await store.set('revealed/'+qid,sec);
+  await store.update('game',{phase:'reveal',deadline:null});
+}
 const remaining=()=>{const g=game();return g.deadline?Math.max(0,Math.ceil((g.deadline-now())/1000)):null};
 
 function showAnswer(q,v){
@@ -462,9 +472,7 @@ function renderStage(){
     else rows.sort((x,y)=>(y.p??-1)-(x.p??-1));
     main=`<div class="q" style="font-size:clamp(1.4rem,2.8vw,3rem);margin-bottom:2vh">${esc(q.text)}</div>
       ${q.type==='flervalg'?optionsHtml(q,true):`<div class="answer"><small>Fasit</small>${esc(showAnswer(q,q.answer))}</div>`}
-      <div class="reslist" style="margin-top:3vh">${rows.map(({t,a,p})=>`<div class="res ${typeof p==='number'&&p>=P&&P>0?'full':''}">
-        <div><div class="who">${esc(t.name)}</div><div class="what">${esc(a?showAnswer(q,a.v):'ingen svar')}</div></div>
-        <div class="pts">${typeof p==='number'?'+'+fmt(p):''}</div></div>`).join('')}</div>`;
+      <div class="status muted">Sjekk mobilen for å se hvordan det gikk 📱</div>`;
   }else if(g.phase==='score'){
     const r=ranked();const max=Math.max(1,...r.map(t=>t.total));
     main=`<h1 style="text-align:center;font-size:clamp(2rem,5vw,5rem);margin-bottom:4vh">Poengtavle</h1>
@@ -504,7 +512,7 @@ function renderJudge(){
       <div class="row small"><a href="#skjerm" target="_blank">Åpne storskjerm ↗</a><a href="#lag" target="_blank">Lag-side ↗</a></div></div>
     <div class="ctrl">
       ${next?`<button class="btn" data-act="show" data-q="${next.id}">▶ ${cur?'Neste':'Første'} spørsmål (${qIndex(next.id)+1})</button>`:''}
-      ${cur&&g.phase==='open'?`<span class="row" style="gap:6px"><input id="secs" type="number" value="30" min="5" style="width:80px"><button class="btn ghost" data-act="timer">⏱ Start nedtelling</button></span>
+      ${cur&&g.phase==='open'?`<span class="row" style="gap:6px"><input id="secs" type="number" value="30" min="5" style="width:80px"><button class="btn ghost" data-act="timer">⏱ Ny nedtelling</button></span>
         <button class="btn ghost" data-act="lock">🔒 Lås svar</button>`:''}
       ${cur&&(g.phase==='open'||g.phase==='locked')&&cur.video?`<button class="btn teal" data-act="playvideo">🎬 Lås og spill svarvideo</button>`:''}
       ${cur&&g.phase==='video'?`<button class="btn teal" data-act="reveal">⏭ Hopp over video, vis fasit</button>`:''}
@@ -522,7 +530,7 @@ function renderJudge(){
     grading=`<div class="row" style="justify-content:space-between;margin-bottom:8px">
       <div><div class="muted small">Retter spørsmål ${qIndex(gq.id)+1} · ${TYPE_LABEL[gq.type]} · ${fmt(gq.points)} p</div>
       <b>${esc(gq.text)}</b><div class="small" style="color:var(--green)">Fasit: ${esc(showAnswer(gq,gq.answer))}${gq.type==='tall'&&num(gq.tol)>0?` (delpoeng ±${esc(gq.tol)})`:''}</div></div>
-      <button class="btn sm teal" data-act="apply" data-q="${gq.id}" ${Object.keys(ans).length?'':'disabled'}>Bruk alle forslag</button></div>
+      <button class="btn sm ghost" data-act="apply" data-q="${gq.id}" ${Object.keys(ans).length?'':'disabled'} title="Poeng deles ut automatisk når fasiten vises. Bruk denne for å tilbakestille til forslagene.">↺ Tilbakestill til forslag</button></div>
       <table><thead><tr><th>Lag</th><th>Svar</th><th>Forslag</th><th>Poeng</th></tr></thead><tbody>
       ${ts.map(t=>{const a=ans[t.id];return `<tr><td>${esc(t.name)}</td><td>${a?esc(showAnswer(gq,a.v)):'<span class="muted">—</span>'}</td>
         <td class="sug">${a&&t.id in sug?fmt(sug[t.id]):''}</td>
@@ -587,11 +595,13 @@ function openEditor(id){
   $('#e_num').value=q.type==='tall'?q.answer??'':'';
   $('#e_tol').value=q.type==='tall'?q.tol??'':'';
   $('#e_video').value=q.video||'';
+  $('#e_time').value=q.time??30;
   ed.showModal();
 }
 async function saveQuestion(id,q){
   const pub={type:q.type,text:q.text,points:Number(q.points)||0,order:q.order};
   if(q.type==='flervalg')pub.options=q.options;
+  if(q.time!=null&&q.time!=='')pub.time=Number(q.time)||0;
   const sec={answer:String(q.answer)};
   if(q.type==='tall')sec.tol=Number(q.tol)||0;
   if(q.video)sec.video=String(q.video).trim();
@@ -613,6 +623,7 @@ async function saveEditor(){
   else if(type==='tekst'){q.answer=$('#e_txt').value.trim();if(!q.answer)return alert('Skriv inn minst ett godkjent svar.')}
   else{q.answer=$('#e_num').value.trim();if(!isFinite(num(q.answer)))return alert('Fasit må være et tall.');const t=$('#e_tol').value.trim();q.tol=t===''?0:num(t)}
   q.video=$('#e_video').value.trim();
+  q.time=Math.max(0,Number($('#e_time').value)||0);
   if(q.video&&/^(www\.|youtu)/i.test(q.video))q.video='https://'+q.video;
   const qs=questions();
   q.order=editId?S.questions[editId].order:(qs.length?Math.max(...qs.map(x=>x.order||0)):0)+1;
@@ -648,7 +659,8 @@ document.addEventListener('click',async e=>{
       catch(err){return alert('Svaret ble ikke sendt. Svarene er kanskje låst.')}
       const inp=$('#ans_'+g.qid);if(inp){inp.value='';inp.blur()}
       break}
-    case 'show':gradeQ=qid;await store.remove('revealed/'+qid);await store.set('game',{phase:'open',qid,deadline:null});break;
+    case 'show':{gradeQ=qid;const t=Number(qById(qid)?.time??30);await store.remove('revealed/'+qid);
+      await store.set('game',{phase:'open',qid,deadline:t>0?now()+t*1000:null});break}
     case 'timer':{const s=Math.max(3,Number($('#secs').value)||30);await store.set('game/deadline',now()+s*1000);break}
     case 'lock':await store.update('game',{phase:lockPhase(g.qid),deadline:null});break;
     case 'playvideo':await store.update('game',{phase:'video',deadline:null});break;
