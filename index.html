@@ -14,14 +14,11 @@
 const CONFIG = {
   title: "Gameshow",          // vises på storskjermen og mobilene
   subtitle: "Mannhullet",     // liten tekst under tittelen (kan være "")
-  dommerPin: "1234",          // kode for å åpne dommerpanelet ("" = ingen kode)
   showId: "kveld1",           // bytt for et nytt show med blanke ark
-  lagLenke: "",               // lenken QR-koden peker til, f.eks. "https://brukernavn.github.io/gameshow.html#lag"
-                              // (tom = siden finner den selv – virker på GitHub Pages)
+  lagLenke: "",               // lenken QR-koden peker til (tom = finner den selv)
 
-  // Lim inn Firebase-config her for å bruke siden på ekte (se veiledningen).
-  // Står den som null, kjører siden i DEMO-modus: fungerer bare mellom faner
-  // i samme nettleser på samme maskin – fint for å teste.
+  // Dommertilgang styres av reglene i Firebase (hvilke Google-kontoer som er dommere),
+  // ikke av noe i denne filen. Står firebase som null, kjører siden i DEMO-modus.
   firebase: {
     apiKey: "AIzaSyC119i6CxNX7b6pf6MF7UsWxtcZeKnzOKQ",
     authDomain: "mannhullet-gameshow.firebaseapp.com",
@@ -29,15 +26,6 @@ const CONFIG = {
     projectId: "mannhullet-gameshow",
     appId: "1:813182360482:web:4990b61fd0da0641eaf0fb"
   }
-  /* Eksempel:
-  firebase: {
-    apiKey: "…",
-    authDomain: "mitt-gameshow.firebaseapp.com",
-    databaseURL: "https://mitt-gameshow-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "mitt-gameshow",
-    appId: "…"
-  }
-  */
 };
 </script>
 <style>
@@ -75,9 +63,7 @@ input[type=text],input[type=number],input:not([type]),select,textarea{
 input:focus,select:focus,textarea:focus{border-color:var(--gold)}
 .banner{background:#3a2a0a;border:1px solid #7a5a17;color:#ffe2a3;border-radius:12px;padding:10px 14px;font-size:.9rem;margin-bottom:16px}
 .pill{display:inline-block;padding:.25em .7em;border-radius:99px;background:var(--bg2);border:1px solid var(--line);font-size:.8rem;font-weight:700}
-.pill.on{background:var(--gold);color:#1b1404;border-color:var(--gold)}
 
-/* ---------- Landing ---------- */
 .land{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px 16px}
 .land h1{font-size:clamp(2.6rem,8vw,5rem);color:var(--gold)}
 .land .choices{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));max-width:760px;margin:28px auto 0}
@@ -85,7 +71,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold)}
 .land a.card:hover{border-color:var(--gold)}
 .land a.card b{font-family:var(--display);font-size:1.3rem;display:block;margin-bottom:4px}
 
-/* ---------- Mobil (lag) ---------- */
 .phone{max-width:520px;margin:0 auto;padding:18px 16px 40px;min-height:100vh;display:flex;flex-direction:column}
 .phone header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
 .phone header .name{font-family:var(--display);font-weight:800;font-size:1.15rem}
@@ -101,7 +86,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold)}
 .ansinput{font-size:1.4rem!important;padding:.8em!important;text-align:center}
 .countdown{font-family:var(--display);font-weight:800;color:var(--gold)}
 
-/* ---------- Storskjerm ---------- */
 .stage{min-height:100vh;padding:3vh 4vw;display:flex;flex-direction:column}
 .stage .top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:clamp(14px,1.4vw,22px)}
 .stage .top b{color:var(--gold);font-family:var(--display)}
@@ -150,7 +134,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold)}
 .fsbtn{position:fixed;right:14px;bottom:14px;opacity:.35;z-index:6}
 .fsbtn:hover{opacity:1}
 
-/* ---------- Dommer ---------- */
 .judge .cols{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start}
 @media (max-width:860px){.judge .cols{grid-template-columns:1fr}}
 .judge .ctrl{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
@@ -202,7 +185,7 @@ form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flerv
     </div>
     <div class="f-tekst">
       <label>Godkjente svar (skill flere med | )</label>
-      <input id="e_txt" placeholder="Nidaros | Nidarosdomen">
+      <input id="e_txt" placeholder="Nidarosdomen | Nidaros">
       <div class="small muted" style="margin-top:4px">Små/store bokstaver og tegnsetting ignoreres. Du kan alltid overstyre poengene selv.</div>
     </div>
     <div class="f-tall">
@@ -214,6 +197,7 @@ form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flerv
     </div>
     <label>Poeng for riktig / nærmest</label>
     <input id="e_pts" type="number" min="0" step="1" value="3">
+    <div class="small muted" style="margin-top:12px">🔒 Fasiten lagres skjult og vises ikke for lagene før du trykker «Vis fasit».</div>
     <div class="row" style="margin-top:20px;justify-content:flex-end">
       <button type="button" class="btn ghost" data-act="edcancel">Avbryt</button>
       <button type="button" class="btn" data-act="edsave">Lagre</button>
@@ -238,9 +222,9 @@ function makeDemoStore(){
     for(let i=0;i<ks.length-1;i++){if(typeof x[ks[i]]!=='object'||x[ks[i]]===null)x[ks[i]]={};x=x[ks[i]]}
     if(v==null)delete x[ks[ks.length-1]];else x[ks[ks.length-1]]=v;return o};
   const emit=()=>subs.forEach(f=>f());
-  const save=()=>{localStorage.setItem(KEY,JSON.stringify(state));emit()};
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}emit()};
   addEventListener('storage',e=>{if(e.key===KEY){state=load();emit()}});
-  return{demo:true,
+  return{demo:true,serverOffset:0,
     on(p,cb){let last;const run=()=>{const v=getAt(state,p);const j=JSON.stringify(v===undefined?null:v);if(j!==last){last=j;cb(JSON.parse(j))}};subs.add(run);run();return()=>subs.delete(run)},
     async set(p,v){state=setAt(state,p,clone(v));save()},
     async update(p,o){for(const k in o)state=setAt(state,p+'/'+k,clone(o[k]));save()},
@@ -248,18 +232,21 @@ function makeDemoStore(){
 }
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 async function makeFirebaseStore(cfg){
-  const v='10.12.2';
-  await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-app-compat.js`);
-  await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-database-compat.js`);
+  const v='10.12.2',b=`https://www.gstatic.com/firebasejs/${v}/`;
+  await loadScript(b+'firebase-app-compat.js');
+  await Promise.all([loadScript(b+'firebase-auth-compat.js'),loadScript(b+'firebase-database-compat.js')]);
   firebase.initializeApp(cfg);
   const db=firebase.database();
   const root='shows/'+CONFIG.showId;
   const r=p=>db.ref(root+(p?'/'+p:''));
-  return{demo:false,
-    on(p,cb){const ref=r(p);const fn=s=>cb(s.val());ref.on('value',fn);return()=>ref.off('value',fn)},
+  const st={demo:false,auth:firebase.auth(),serverOffset:0,
+    on(p,cb,err){const ref=r(p);const fn=s=>cb(s.val());ref.on('value',fn,e=>err&&err(e));return()=>ref.off('value',fn)},
     set:(p,v)=>r(p).set(clone(v)),
     update:(p,o)=>r(p).update(clone(o)),
-    remove:p=>r(p).remove()};
+    remove:p=>r(p).remove(),
+    canRead:p=>r(p).once('value').then(()=>true,()=>false)};
+  db.ref('.info/serverTimeOffset').on('value',s=>{st.serverOffset=s.val()||0});
+  return st;
 }
 
 /* ============================================================
@@ -274,19 +261,26 @@ const norm=s=>String(s??'').toLowerCase().normalize('NFC').replace(/[.,!?;:"'()\
 const fmt=n=>{n=Number(n)||0;return Number.isInteger(n)?String(n):n.toFixed(1).replace('.',',')};
 const TYPE_LABEL={tekst:'Ord',tall:'Tall',flervalg:'Flervalg',sannusann:'Sant/usant'};
 
-let store, S={};
-const me=()=>localStorage.getItem('gs_team_'+CONFIG.showId);
+let store, S={}, UID=null, USER=null, IS_ADMIN=false, BOOT='loading';
+const now=()=>Date.now()+(store?.serverOffset||0);
+const view=()=>(location.hash.slice(1)||'').toLowerCase();
+const isTeamView=()=>['lag','mobil'].includes(view());
+const isStage=()=>['skjerm','storskjerm'].includes(view());
+const isJudge=()=>['dommer','admin'].includes(view());
+
+const me=()=>UID&&S.teams?.[UID]?UID:null;
 const game=()=>S.game||{phase:'lobby'};
-const questions=()=>Object.entries(S.questions||{}).map(([id,q])=>({id,...q})).sort((a,b)=>(a.order||0)-(b.order||0));
-const qById=id=>{const q=S.questions?.[id];return q?{id,...q}:null};
+function full(id,q){const sec=S.secret?.[id]||S.revealed?.[id]||{};return {...q,...sec,id}}
+const questions=()=>Object.entries(S.questions||{}).map(([id,q])=>full(id,q)).sort((a,b)=>(a.order||0)-(b.order||0));
+const qById=id=>S.questions?.[id]?full(id,S.questions[id]):null;
 const qIndex=id=>questions().findIndex(q=>q.id===id);
 const teams=()=>Object.entries(S.teams||{}).map(([id,t])=>({id,...t})).sort((a,b)=>(a.joined||0)-(b.joined||0));
 const answersFor=qid=>S.answers?.[qid]||{};
 const scoresFor=qid=>S.scores?.[qid]||{};
 function total(tid){let s=0;for(const q in (S.scores||{})){const v=S.scores[q]?.[tid];if(typeof v==='number')s+=v}return s}
 function ranked(){return teams().map(t=>({...t,total:total(t.id)})).sort((a,b)=>b.total-a.total||(a.joined||0)-(b.joined||0))}
-const expired=()=>{const g=game();return !!g.deadline&&Date.now()>g.deadline};
-const remaining=()=>{const g=game();return g.deadline?Math.max(0,Math.ceil((g.deadline-Date.now())/1000)):null};
+const expired=()=>{const g=game();return !!g.deadline&&now()>g.deadline};
+const remaining=()=>{const g=game();return g.deadline?Math.max(0,Math.ceil((g.deadline-now())/1000)):null};
 
 function showAnswer(q,v){
   if(v==null||v==='')return '—';
@@ -316,7 +310,6 @@ function suggest(q,ans){
   return out;
 }
 
-/* Bytt innhold uten å miste fokus/tekst i feltet man skriver i */
 function patch(el,html){
   if(el._html===html)return;
   const a=document.activeElement;let keep=null;
@@ -329,18 +322,18 @@ function patch(el,html){
    Visninger
    ============================================================ */
 const app=$('#app');
-const view=()=>(location.hash.slice(1)||'').toLowerCase();
 const baseUrl=()=>location.href.split('#')[0];
-const demoBanner=()=>store?.demo?`<div class="banner"><b>Demo-modus.</b> Fungerer bare mellom faner i denne nettleseren. Legg inn Firebase-config i filen for å bruke den med mobiler.</div>`:'';
+const demoBanner=()=>store?.demo?`<div class="banner"><b>Demo-modus.</b> Fungerer bare mellom faner i denne nettleseren.</div>`:'';
 
 function render(){
   document.title=CONFIG.title;
-  const v=view();
-  document.body.dataset.view=v;
-  if(v!=='skjerm'&&v!=='storskjerm')stopConfetti();
-  if(v==='lag'||v==='mobil')return patch(app,renderTeam());
-  if(v==='skjerm'||v==='storskjerm')return patch(app,renderStage());
-  if(v==='dommer'||v==='admin')return patch(app,renderJudge());
+  if(!isStage())stopConfetti();
+  if(BOOT!=='ready')return patch(app,`<div class="land"><div class="muted">${esc(BOOT==='loading'?'Kobler til …':BOOT)}</div></div>`);
+  if(isTeamView())return patch(app,renderTeam());
+  if(isStage()||isJudge()){
+    if(!IS_ADMIN)return patch(app,renderLogin());
+    return patch(app,isStage()?renderStage():renderJudge());
+  }
   patch(app,renderLanding());
 }
 
@@ -350,15 +343,28 @@ function renderLanding(){
     <h1>${esc(CONFIG.title)}</h1>
     <div class="muted">${esc(CONFIG.subtitle)}</div>
     <div class="choices">
-      <a class="card" href="#skjerm"><b>📺 Storskjerm</b><span class="muted small">Vises på prosjektoren. Spørsmål, svar og poengtavle.</span></a>
+      <a class="card" href="#skjerm"><b>📺 Storskjerm</b><span class="muted small">Vises på prosjektoren. Krever dommerinnlogging.</span></a>
       <a class="card" href="#lag"><b>📱 Lag</b><span class="muted small">For mobilene til gruppene. Her sender de inn svar.</span></a>
       <a class="card" href="#dommer"><b>🎛️ Dommer</b><span class="muted small">Styrer showet, ser alle svar og deler ut poeng.</span></a>
     </div></div></div>`;
 }
 
+function renderLogin(){
+  const u=USER,google=u&&!u.isAnonymous;
+  return `<div class="phone"><div class="center">
+    <div style="font-size:3rem">🔒</div>
+    <h1>${isStage()?'Storskjerm':'Dommerpanel'}</h1>
+    ${google?`<p>Innlogget som <b>${esc(u.email||'ukjent')}</b>, men denne kontoen har ikke dommertilgang.</p>
+      <button class="btn ghost" data-act="logout">Logg ut og bytt konto</button>`
+    :`<p class="muted">Logg inn med Google-kontoen som har dommertilgang.</p>
+      <button class="btn" style="width:100%;font-size:1.1rem" data-act="login">Logg inn med Google</button>`}
+    <p class="small muted" style="margin-top:24px">Er du med på et lag? <a href="#lag">Gå til lag-siden</a></p>
+  </div></div>`;
+}
+
 /* ---------- LAG ---------- */
 function renderTeam(){
-  const tid=me(),team=tid&&S.teams?.[tid];
+  const tid=me(),team=tid&&S.teams[tid];
   if(!team){
     return `<div class="phone"><div class="center">
       ${demoBanner()}
@@ -381,7 +387,7 @@ function renderTeam(){
     }else if(q.type==='sannusann'){
       input=`<div class="tf">${['sant','usant'].map(v=>`<button class="choice ${mine?.v===v?'sel':''}" data-act="pick" data-v="${v}" ${closed?'disabled':''}>${v==='sant'?'✅ Sant':'❌ Usant'}</button>`).join('')}</div>`;
     }else{
-      input=`<input id="ans_${q.id}" class="ansinput" ${q.type==='tall'?'inputmode="decimal"':''} placeholder="${q.type==='tall'?'Skriv et tall':'Skriv svaret'}" autocomplete="off" ${closed?'disabled':''}>
+      input=`<input id="ans_${q.id}" class="ansinput" ${q.type==='tall'?'inputmode="decimal"':''} maxlength="100" placeholder="${q.type==='tall'?'Skriv et tall':'Skriv svaret'}" autocomplete="off" ${closed?'disabled':''}>
         <button class="btn" style="margin-top:10px;width:100%;font-size:1.1rem" data-act="submit" ${closed?'disabled':''}>${mine?'Endre svar':'Send svar'}</button>`;
     }
     body=`<div class="muted small">Spørsmål ${n} · ${TYPE_LABEL[q.type]}${g.deadline?` · <span class="countdown" data-countdown></span>`:''}</div>
@@ -431,7 +437,7 @@ function renderStage(){
   }else if(g.phase==='reveal'){
     const ans=answersFor(q.id),sc=scoresFor(q.id),P=Number(q.points)||0;
     let rows=ts.map(t=>({t,a:ans[t.id],p:sc[t.id]}));
-    if(q.type==='tall'){const tg=num(q.answer);rows.sort((x,y)=>(Math.abs(num(x.a?.v)-tg)||Infinity)-(Math.abs(num(y.a?.v)-tg)||Infinity))}
+    if(q.type==='tall'){const tg=num(q.answer);const d=x=>{const v=Math.abs(num(x.a?.v)-tg);return isFinite(v)?v:Infinity};rows.sort((x,y)=>d(x)-d(y))}
     else rows.sort((x,y)=>(y.p??-1)-(x.p??-1));
     main=`<div class="q" style="font-size:clamp(1.4rem,2.8vw,3rem);margin-bottom:2vh">${esc(q.text)}</div>
       ${q.type==='flervalg'?optionsHtml(q,true):`<div class="answer"><small>Fasit</small>${esc(showAnswer(q,q.answer))}</div>`}
@@ -465,11 +471,6 @@ function optionsHtml(q,reveal){
 /* ---------- DOMMER ---------- */
 let gradeQ=null;
 function renderJudge(){
-  if(CONFIG.dommerPin&&sessionStorage.getItem('gs_pin')!==CONFIG.dommerPin){
-    return `<div class="phone"><div class="center"><h1>🎛️ Dommer</h1><p class="muted">Skriv inn koden</p>
-      <input id="pin" class="ansinput" type="password" inputmode="numeric" autocomplete="off">
-      <button class="btn" style="margin-top:10px;width:100%" data-act="pin">Åpne</button></div></div>`;
-  }
   const g=game(),qs=questions(),ts=teams(),cur=g.qid&&qById(g.qid);
   const gq=(gradeQ&&qById(gradeQ))||cur;
   const phaseName={lobby:'Lobby',open:'Svar åpne',locked:'Svar låst',reveal:'Viser fasit',score:'Poengtavle',winner:'Vinner kåret'}[g.phase]||g.phase;
@@ -527,7 +528,8 @@ function renderJudge(){
     <button class="btn sm red" data-act="resetall">Nullstill alt (også lag)</button></div></div>`;
 
   return `<div class="wrap judge">${demoBanner()}
-    <div class="row" style="justify-content:space-between;margin-bottom:14px"><h1 style="margin:0">🎛️ Dommerpanel</h1><span class="muted">${esc(CONFIG.title)}</span></div>
+    <div class="row" style="justify-content:space-between;margin-bottom:14px"><h1 style="margin:0">🎛️ Dommerpanel</h1>
+      <span class="muted small">${USER?.email?esc(USER.email)+' · ':''}${store.demo?'':'<a href="#" data-act="logout">Logg ut</a>'}</span></div>
     ${control}
     <div class="cols" style="margin-top:16px">
       <div class="grid"><div class="card">${grading}</div>${qlist}</div>
@@ -536,7 +538,7 @@ function renderJudge(){
 }
 
 /* ============================================================
-   Spørsmålsredigering
+   Spørsmålsredigering (fasit lagres i den skjulte delen "secret")
    ============================================================ */
 let editId=null;
 const ed=$('#ed'),edform=$('#edform');
@@ -554,7 +556,16 @@ function openEditor(id){
   $('#e_tol').value=q.type==='tall'?q.tol??'':'';
   ed.showModal();
 }
-function saveEditor(){
+async function saveQuestion(id,q){
+  const pub={type:q.type,text:q.text,points:Number(q.points)||0,order:q.order};
+  if(q.type==='flervalg')pub.options=q.options;
+  const sec={answer:String(q.answer)};
+  if(q.type==='tall')sec.tol=Number(q.tol)||0;
+  await store.set('questions/'+id,pub);
+  await store.set('secret/'+id,sec);
+  if(S.revealed?.[id])await store.set('revealed/'+id,sec);
+}
+async function saveEditor(){
   const type=$('#e_type').value,text=$('#e_text').value.trim();
   if(!text)return alert('Skriv inn spørsmålet.');
   const q={type,text,points:Number($('#e_pts').value)||0};
@@ -568,9 +579,8 @@ function saveEditor(){
   else if(type==='tekst'){q.answer=$('#e_txt').value.trim();if(!q.answer)return alert('Skriv inn minst ett godkjent svar.')}
   else{q.answer=$('#e_num').value.trim();if(!isFinite(num(q.answer)))return alert('Fasit må være et tall.');const t=$('#e_tol').value.trim();q.tol=t===''?0:num(t)}
   const qs=questions();
-  if(editId){q.order=S.questions[editId].order;store.set('questions/'+editId,q)}
-  else{q.order=(qs.length?Math.max(...qs.map(x=>x.order||0)):0)+1;store.set('questions/'+rid(),q)}
-  ed.close();
+  q.order=editId?S.questions[editId].order:(qs.length?Math.max(...qs.map(x=>x.order||0)):0)+1;
+  try{await saveQuestion(editId||rid(),q);ed.close()}catch(e){alert('Kunne ikke lagre: '+e.message)}
 }
 
 /* ============================================================
@@ -579,59 +589,74 @@ function saveEditor(){
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b||b.disabled)return;
   const act=b.dataset.act,qid=b.dataset.q,g=game();
+  if(act==='logout'||act==='login')e.preventDefault();
+  try{
   switch(act){
-    case 'join':{const name=$('#teamName').value.trim();if(!name)return;const id=rid();
-      localStorage.setItem('gs_team_'+CONFIG.showId,id);await store.set('teams/'+id,{name,joined:Date.now()});break}
+    case 'login':{
+      const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});
+      try{await store.auth.signInWithPopup(p)}
+      catch(err){
+        if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment'].includes(err.code))await store.auth.signInWithRedirect(p);
+        else if(err.code!=='auth/popup-closed-by-user'&&err.code!=='auth/cancelled-popup-request')alert('Innlogging feilet: '+err.message);
+      }
+      break}
+    case 'logout':await store.auth.signOut();location.reload();break;
+    case 'join':{const name=$('#teamName').value.trim().slice(0,30);if(!name)return;
+      await store.set('teams/'+UID,{name,joined:now()});break}
     case 'pick':case 'submit':{
-      if(g.phase!=='open'||expired())return;const tid=me();
+      if(g.phase!=='open'||expired())return;
       let v=act==='pick'?b.dataset.v:$('#ans_'+g.qid)?.value.trim();
       if(!v)return;
       const q=qById(g.qid);if(q.type==='tall'&&!isFinite(num(v)))return alert('Skriv et tall.');
-      await store.set(`answers/${g.qid}/${tid}`,{v,t:Date.now()});
+      try{await store.set(`answers/${g.qid}/${UID}`,{v:String(v).slice(0,100),t:now()})}
+      catch(err){return alert('Svaret ble ikke sendt. Svarene er kanskje låst.')}
       const inp=$('#ans_'+g.qid);if(inp){inp.value='';inp.blur()}
       break}
-    case 'pin':if($('#pin').value===CONFIG.dommerPin){sessionStorage.setItem('gs_pin',CONFIG.dommerPin);render()}else alert('Feil kode');break;
-    case 'show':gradeQ=qid;await store.set('game',{phase:'open',qid,deadline:null});break;
-    case 'timer':{const s=Math.max(3,Number($('#secs').value)||30);await store.set('game/deadline',Date.now()+s*1000);break}
+    case 'show':gradeQ=qid;await store.remove('revealed/'+qid);await store.set('game',{phase:'open',qid,deadline:null});break;
+    case 'timer':{const s=Math.max(3,Number($('#secs').value)||30);await store.set('game/deadline',now()+s*1000);break}
     case 'lock':await store.update('game',{phase:'locked',deadline:null});break;
-    case 'reveal':await store.update('game',{phase:'reveal',deadline:null});break;
+    case 'reveal':{const sec=S.secret?.[g.qid];if(sec)await store.set('revealed/'+g.qid,sec);await store.update('game',{phase:'reveal',deadline:null});break}
     case 'phase':await store.update('game',{phase:b.dataset.v,deadline:null});break;
     case 'grade':gradeQ=qid;render();break;
     case 'apply':{const q=qById(qid);await store.update('scores/'+qid,suggest(q,answersFor(qid)));break}
     case 'newq':openEditor(null);break;
     case 'editq':openEditor(qid);break;
-    case 'edsave':saveEditor();break;
+    case 'edsave':await saveEditor();break;
     case 'edcancel':ed.close();break;
-    case 'delq':if(confirm('Slette dette spørsmålet og svarene på det?')){await store.remove('questions/'+qid);await store.remove('answers/'+qid);await store.remove('scores/'+qid);if(g.qid===qid)await store.set('game',{phase:'lobby'})}break;
+    case 'delq':if(confirm('Slette dette spørsmålet og svarene på det?')){
+      for(const p of ['questions','secret','revealed','answers','scores'])await store.remove(p+'/'+qid);
+      if(g.qid===qid)await store.set('game',{phase:'lobby'})}break;
     case 'up':{const qs=questions(),i=qs.findIndex(q=>q.id===qid);if(i>0){const a=qs[i],p=qs[i-1];
       await store.update('questions',{[a.id+'/order']:p.order||0,[p.id+'/order']:(a.order||0)===(p.order||0)?(a.order||0)+1:a.order})}break}
     case 'delteam':if(confirm('Fjerne laget?'))await store.remove('teams/'+b.dataset.t);break;
-    case 'resetanswers':if(confirm('Slette alle svar og poeng? Lagene og spørsmålene beholdes.')){await store.remove('answers');await store.remove('scores');await store.set('game',{phase:'lobby'})}break;
-    case 'resetall':if(confirm('Slette alle lag, svar og poeng? Spørsmålene beholdes.')){await store.remove('answers');await store.remove('scores');await store.remove('teams');await store.set('game',{phase:'lobby'})}break;
+    case 'resetanswers':if(confirm('Slette alle svar og poeng? Lagene og spørsmålene beholdes.')){
+      for(const p of ['answers','scores','revealed'])await store.remove(p);await store.set('game',{phase:'lobby'})}break;
+    case 'resetall':if(confirm('Slette alle lag, svar og poeng? Spørsmålene beholdes.')){
+      for(const p of ['answers','scores','revealed','teams'])await store.remove(p);await store.set('game',{phase:'lobby'})}break;
     case 'export':{const data=questions().map(({id,order,...q})=>q);
       const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
       a.download='sporsmal.json';a.click();break}
     case 'import':$('#importfile').click();break;
     case 'fullscreen':document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.();break;
   }
+  }catch(err){alert('Noe gikk galt: '+(err.message||err))}
 });
 document.addEventListener('change',e=>{
   const el=e.target;
   if(el.dataset.score){const p=`scores/${el.dataset.q}/${el.dataset.score}`;const v=el.value.trim();
-    v===''?store.remove(p):store.set(p,num(v)||0)}
+    (v===''?store.remove(p):store.set(p,num(v)||0)).catch(err=>alert('Kunne ikke lagre poeng: '+err.message))}
 });
 document.addEventListener('keydown',e=>{
   if(e.key!=='Enter')return;
   if(e.target.id==='teamName')$('[data-act=join]')?.click();
   else if(e.target.id?.startsWith('ans_'))$('[data-act=submit]')?.click();
-  else if(e.target.id==='pin')$('[data-act=pin]')?.click();
 });
 $('#importfile').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{const arr=JSON.parse(await f.text());if(!Array.isArray(arr))throw 0;
-    let o=(questions().reduce((m,q)=>Math.max(m,q.order||0),0));const upd={};
-    for(const q of arr){if(!q.text||!TYPE_LABEL[q.type])continue;upd[rid()]={...q,order:++o}}
-    await store.update('questions',upd);alert(Object.keys(upd).length+' spørsmål importert.');
+    let o=questions().reduce((m,q)=>Math.max(m,q.order||0),0),n=0;
+    for(const q of arr){if(!q.text||!TYPE_LABEL[q.type]||q.answer==null)continue;await saveQuestion(rid(),{...q,order:++o});n++}
+    alert(n+' spørsmål importert.');
   }catch(err){alert('Kunne ikke lese filen. Den må være en eksport fra denne siden.')}
   e.target.value='';
 });
@@ -639,15 +664,15 @@ $('#importfile').addEventListener('change',async e=>{
 /* ============================================================
    Nedtelling, konfetti, oppstart
    ============================================================ */
-let lastExp=null,lastPhase=null;
+let lastExp=null,lastPhase=null,lockingFor=null;
 setInterval(()=>{
   const r=remaining();
   document.querySelectorAll('[data-countdown]').forEach(n=>n.textContent=r==null?'':(r>0?r+' s':'Tiden er ute'));
   const ex=expired();if(ex!==lastExp){lastExp=ex;render()}
-  // Dommerens fane låser automatisk når tiden er ute
   const g=game();
-  if((view()==='dommer'||view()==='admin')&&g.phase==='open'&&ex&&sessionStorage.getItem('gs_pin')===CONFIG.dommerPin)
-    store.update('game',{phase:'locked',deadline:null});
+  if(isJudge()&&IS_ADMIN&&g.phase==='open'&&ex&&lockingFor!==g.deadline){
+    lockingFor=g.deadline;store.update('game',{phase:'locked',deadline:null}).catch(()=>{});
+  }
 },250);
 
 const cv=$('#confetti'),cx=cv.getContext('2d');let parts=[],raf=null;
@@ -662,19 +687,51 @@ function loop(){cx.clearRect(0,0,cv.width,cv.height);
   raf=requestAnimationFrame(loop)}
 function stopConfetti(){if(raf)cancelAnimationFrame(raf);raf=null;cx.clearRect(0,0,cv.width,cv.height)}
 
-function onData(v){
-  S=v||{};render();
-  const ph=game().phase,isStage=['skjerm','storskjerm'].includes(view());
-  if(isStage&&ph==='winner'&&lastPhase!=='winner')startConfetti();
+/* Lag ser bare sitt eget svar – abonner på det for gjeldende spørsmål */
+let ansUnsub=null,ansQ;
+function syncOwnAnswer(){
+  if(IS_ADMIN||!UID)return;
+  const q=game().qid||null;if(q===ansQ)return;
+  ansUnsub&&ansUnsub();ansUnsub=null;ansQ=q;S.answers={};
+  if(q)ansUnsub=store.on(`answers/${q}/${UID}`,v=>{S.answers={[q]:v?{[UID]:v}:{}};render()},()=>{});
+}
+function onData(){
+  syncOwnAnswer();render();
+  const ph=game().phase;
+  if(isStage()&&ph==='winner'&&lastPhase!=='winner')startConfetti();
   if(ph!=='winner')stopConfetti();
   lastPhase=ph;
 }
-addEventListener('hashchange',()=>{lastPhase=null;onData(S)});
+function sub(path,key){store.on(path,v=>{S[key]=v||(key==='game'?null:{});onData()},()=>{})}
+function startSubs(){
+  for(const k of ['game','questions','revealed','scores','teams'])sub(k,k);
+  if(IS_ADMIN){sub('secret','secret');sub('answers','answers')}
+  BOOT='ready';render();
+}
+
+addEventListener('hashchange',()=>location.reload());
 (async()=>{
-  app.innerHTML='<div class="land"><div class="muted">Kobler til …</div></div>';
+  render();
   try{store=CONFIG.firebase?await makeFirebaseStore(CONFIG.firebase):makeDemoStore()}
-  catch(e){app.innerHTML='<div class="land"><div><h2>Kunne ikke koble til Firebase</h2><p class="muted">Sjekk config-en øverst i filen.</p></div></div>';return}
-  store.on('',onData);
+  catch(e){BOOT='Kunne ikke koble til. Sjekk nettforbindelsen og last siden på nytt.';render();return}
+
+  if(store.demo){
+    try{UID=sessionStorage.getItem('gs_uid')||rid();sessionStorage.setItem('gs_uid',UID)}catch(e){UID=rid()}
+    IS_ADMIN=true;startSubs();return;
+  }
+
+  let initUid;
+  store.auth.onAuthStateChanged(async user=>{
+    if(initUid!==undefined){if((user?.uid||null)!==initUid)location.reload();return}
+    if(!user&&isTeamView()){
+      try{await store.auth.signInAnonymously()}catch(e){BOOT='Kunne ikke koble til. Last siden på nytt.';render()}
+      return;
+    }
+    initUid=user?.uid||null;USER=user;UID=user?.uid||null;
+    if(user&&!user.isAnonymous)IS_ADMIN=await store.canRead('secret');
+    if(!user||((isStage()||isJudge())&&!IS_ADMIN)){BOOT='ready';render();return}
+    startSubs();
+  });
 })();
 </script>
 </body>
