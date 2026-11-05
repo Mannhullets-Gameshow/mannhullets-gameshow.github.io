@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Gameshow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script>
+/* ============================================================
+   OPPSETT – endre disse før showet
+   ============================================================ */
+const CONFIG = {
+  title: "Gameshow",          // vises på storskjermen og mobilene
+  subtitle: "Mannhullet",     // liten tekst under tittelen (kan være "")
+  dommerPin: "1234",          // kode for å åpne dommerpanelet ("" = ingen kode)
+  showId: "kveld1",           // bytt for et nytt show med blanke ark
+  lagLenke: "",               // lenken QR-koden peker til, f.eks. "https://brukernavn.github.io/gameshow.html#lag"
+                              // (tom = siden finner den selv – virker på GitHub Pages)
+
+  // Lim inn Firebase-config her for å bruke siden på ekte (se veiledningen).
+  // Står den som null, kjører siden i DEMO-modus: fungerer bare mellom faner
+  // i samme nettleser på samme maskin – fint for å teste.
+  firebase: {
+    apiKey: "AIzaSyC119i6CxNX7b6pf6MF7UsWxtcZeKnzOKQ",
+    authDomain: "mannhullet-gameshow.firebaseapp.com",
+    databaseURL: "https://mannhullet-gameshow-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "mannhullet-gameshow",
+    appId: "1:813182360482:web:4990b61fd0da0641eaf0fb"
+  }
+  /* Eksempel:
+  firebase: {
+    apiKey: "…",
+    authDomain: "mitt-gameshow.firebaseapp.com",
+    databaseURL: "https://mitt-gameshow-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "mitt-gameshow",
+    appId: "…"
+  }
+  */
+};
+</script>
+<style>
+:root{
+  --bg:#0b1022; --bg2:#141b36; --card:#1a2347; --line:#2b3666;
+  --text:#f3f1ea; --muted:#a3a9c7; --gold:#f2c14e; --gold2:#e09b2d;
+  --teal:#43d1c0; --red:#ff6b6b; --green:#5ad17a;
+  --r:16px;
+  --display:"Bricolage Grotesque",system-ui,sans-serif;
+  --body:"DM Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);min-height:100%}
+body{background:radial-gradient(1200px 700px at 50% -10%,#1f2a5c 0%,var(--bg) 60%) fixed}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--gold)}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1,h2,h3{font-family:var(--display);margin:0 0 .4em;letter-spacing:-.01em}
+.muted{color:var(--muted)}
+.small{font-size:.85rem}
+.btn{border:0;border-radius:12px;padding:.75em 1.2em;font-weight:700;background:var(--gold);color:#1b1404;transition:transform .08s,filter .15s}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{background:transparent;color:var(--text);border:1.5px solid var(--line)}
+.btn.teal{background:var(--teal);color:#06231f}
+.btn.red{background:var(--red);color:#2a0606}
+.btn.sm{padding:.45em .8em;font-size:.85rem;border-radius:9px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.grid{display:grid;gap:14px}
+input[type=text],input[type=number],input:not([type]),select,textarea{
+  background:var(--bg2);border:1.5px solid var(--line);border-radius:10px;padding:.65em .8em;width:100%;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--gold)}
+.banner{background:#3a2a0a;border:1px solid #7a5a17;color:#ffe2a3;border-radius:12px;padding:10px 14px;font-size:.9rem;margin-bottom:16px}
+.pill{display:inline-block;padding:.25em .7em;border-radius:99px;background:var(--bg2);border:1px solid var(--line);font-size:.8rem;font-weight:700}
+.pill.on{background:var(--gold);color:#1b1404;border-color:var(--gold)}
+
+/* ---------- Landing ---------- */
+.land{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px 16px}
+.land h1{font-size:clamp(2.6rem,8vw,5rem);color:var(--gold)}
+.land .choices{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));max-width:760px;margin:28px auto 0}
+.land a.card{text-decoration:none;color:var(--text);text-align:left}
+.land a.card:hover{border-color:var(--gold)}
+.land a.card b{font-family:var(--display);font-size:1.3rem;display:block;margin-bottom:4px}
+
+/* ---------- Mobil (lag) ---------- */
+.phone{max-width:520px;margin:0 auto;padding:18px 16px 40px;min-height:100vh;display:flex;flex-direction:column}
+.phone header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.phone header .name{font-family:var(--display);font-weight:800;font-size:1.15rem}
+.phone .big{font-family:var(--display);font-size:1.6rem;line-height:1.2;margin:8px 0 18px}
+.phone .center{flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center}
+.choice{display:block;width:100%;text-align:left;background:var(--card);border:2px solid var(--line);border-radius:14px;padding:16px;margin-bottom:10px;font-weight:700;font-size:1.05rem}
+.choice .l{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:8px;background:var(--bg2);margin-right:10px}
+.choice.sel{border-color:var(--gold);background:#2d2a1a}
+.choice.sel .l{background:var(--gold);color:#1b1404}
+.tf{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tf .choice{text-align:center;font-size:1.3rem;padding:26px 10px}
+.sent{margin-top:14px;padding:12px;border-radius:12px;background:#12321f;border:1px solid #2f7a48;color:#bff0cd}
+.ansinput{font-size:1.4rem!important;padding:.8em!important;text-align:center}
+.countdown{font-family:var(--display);font-weight:800;color:var(--gold)}
+
+/* ---------- Storskjerm ---------- */
+.stage{min-height:100vh;padding:3vh 4vw;display:flex;flex-direction:column}
+.stage .top{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:clamp(14px,1.4vw,22px)}
+.stage .top b{color:var(--gold);font-family:var(--display)}
+.stage .main{flex:1;display:flex;flex-direction:column;justify-content:center}
+.stage h1.title{font-size:clamp(3rem,9vw,9rem);color:var(--gold);text-align:center;line-height:1}
+.stage .sub{text-align:center;font-size:clamp(1rem,2vw,2rem);color:var(--muted);margin-bottom:4vh}
+.join{display:flex;gap:4vw;align-items:center;justify-content:center;flex-wrap:wrap}
+.join .qr{background:#fff;border-radius:18px;padding:12px;line-height:0}
+.join .qr svg{width:clamp(160px,22vw,320px);height:auto}
+.join .url{font-size:clamp(1rem,1.8vw,1.8rem);max-width:40vw;word-break:break-all}
+.chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:4vh}
+.chip{padding:.4em .9em;border-radius:99px;background:var(--card);border:1.5px solid var(--line);font-weight:700;font-size:clamp(14px,1.5vw,24px)}
+.chip.on{background:var(--gold);color:#1b1404;border-color:var(--gold);animation:pop .35s}
+@keyframes pop{0%{transform:scale(.8)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+.q{font-family:var(--display);font-size:clamp(2rem,4.6vw,5rem);line-height:1.1;text-align:center;margin:0 auto 4vh;max-width:22ch}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:2vh 2vw;max-width:1400px;margin:0 auto;width:100%}
+.opt{background:var(--card);border:2px solid var(--line);border-radius:20px;padding:2.2vh 2vw;font-size:clamp(1.1rem,2.2vw,2.4rem);font-weight:700;display:flex;gap:1vw;align-items:center}
+.opt .l{display:inline-grid;place-items:center;min-width:2.2em;height:2.2em;border-radius:12px;background:var(--bg2);color:var(--gold);font-family:var(--display)}
+.opt.right{border-color:var(--green);background:#143322}
+.opt.right .l{background:var(--green);color:#06210f}
+.opt.dim{opacity:.35}
+.status{display:flex;justify-content:center;gap:3vw;align-items:center;margin-top:4vh;font-size:clamp(1rem,2vw,2rem)}
+.status .countdown{font-size:clamp(2.5rem,6vw,6rem)}
+.answer{text-align:center;font-family:var(--display);font-size:clamp(2.5rem,7vw,7rem);color:var(--green);margin-bottom:3vh}
+.answer small{display:block;font-size:.3em;color:var(--muted);font-family:var(--body);text-transform:uppercase;letter-spacing:.15em}
+.reslist{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5vh 1.5vw;max-width:1500px;margin:0 auto;width:100%}
+.res{background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:1.6vh 1.4vw;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:clamp(1rem,1.6vw,1.6rem)}
+.res .who{font-weight:700}
+.res .what{color:var(--muted);font-size:.85em}
+.res .pts{font-family:var(--display);font-weight:800;color:var(--gold);font-size:1.4em;white-space:nowrap}
+.res.full{border-color:var(--green)}
+.board{max-width:1200px;margin:0 auto;width:100%;display:grid;gap:1.4vh}
+.bar{display:grid;grid-template-columns:3em 1fr auto;align-items:center;gap:1.2vw;font-size:clamp(1.1rem,2vw,2.2rem)}
+.bar .rank{font-family:var(--display);font-weight:800;color:var(--muted);text-align:right}
+.bar .track{background:var(--bg2);border-radius:14px;overflow:hidden;position:relative;height:2.2em}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,var(--gold2),var(--gold));border-radius:14px;transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.bar .lbl{position:absolute;left:.8em;top:50%;transform:translateY(-50%);font-weight:700;color:#1b1404;white-space:nowrap;text-shadow:0 1px 0 rgba(255,255,255,.25)}
+.bar .sc{font-family:var(--display);font-weight:800;min-width:3ch;text-align:right}
+.winner{text-align:center}
+.winner .crown{font-size:clamp(3rem,8vw,8rem)}
+.winner .wn{font-family:var(--display);font-size:clamp(3rem,10vw,10rem);color:var(--gold);line-height:1;margin:1vh 0}
+.podium{display:flex;justify-content:center;gap:3vw;margin-top:5vh;font-size:clamp(1rem,1.8vw,2rem)}
+.podium div{background:var(--card);border:1.5px solid var(--line);border-radius:16px;padding:1.5vh 2vw;min-width:14vw}
+.podium b{font-family:var(--display);display:block;font-size:1.3em}
+#confetti{position:fixed;inset:0;pointer-events:none;z-index:5}
+.fsbtn{position:fixed;right:14px;bottom:14px;opacity:.35;z-index:6}
+.fsbtn:hover{opacity:1}
+
+/* ---------- Dommer ---------- */
+.judge .cols{display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:start}
+@media (max-width:860px){.judge .cols{grid-template-columns:1fr}}
+.judge .ctrl{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.judge table{width:100%;border-collapse:collapse;font-size:.95rem}
+.judge th,.judge td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.judge th{color:var(--muted);font-weight:500;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+.judge td input{width:80px;padding:.4em .5em}
+.qitem{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px;border-radius:12px;border:1px solid var(--line);margin-bottom:8px;background:var(--bg2)}
+.qitem.cur{border-color:var(--gold)}
+.qitem .num{font-family:var(--display);font-weight:800;color:var(--gold);width:1.8em;text-align:center}
+.qitem .t{font-weight:500;line-height:1.3}
+.qitem .meta{font-size:.78rem;color:var(--muted)}
+.qitem .acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.phase{font-family:var(--display);font-size:1.2rem}
+.sug{color:var(--muted);font-size:.85rem}
+dialog{background:var(--card);color:var(--text);border:1px solid var(--line);border-radius:18px;padding:22px;width:min(560px,94vw)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog label{display:block;font-size:.85rem;color:var(--muted);margin:12px 0 5px}
+.f-tall,.f-tekst,.f-flervalg,.f-sannusann{display:none}
+form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flervalg] .f-flervalg,form[data-type=sannusann] .f-sannusann{display:block}
+.empty{padding:20px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:12px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<canvas id="confetti"></canvas>
+
+<dialog id="ed">
+  <form id="edform" method="dialog" data-type="tekst">
+    <h2 id="edtitle">Nytt spørsmål</h2>
+    <label>Type</label>
+    <select id="e_type">
+      <option value="tekst">Ord / tekst</option>
+      <option value="tall">Tall (nærmest vinner)</option>
+      <option value="flervalg">Flervalg</option>
+      <option value="sannusann">Sant eller usant</option>
+    </select>
+    <label>Spørsmål</label>
+    <textarea id="e_text" rows="3" placeholder="Hvor mange år fyller Mannhullet i år?"></textarea>
+    <div class="f-flervalg">
+      <label>Alternativer (ett per linje)</label>
+      <textarea id="e_opts" rows="4" placeholder="Oslo&#10;Bergen&#10;Trondheim&#10;Tromsø"></textarea>
+      <label>Riktig alternativ (bokstav)</label>
+      <input id="e_mc" placeholder="C" maxlength="1">
+    </div>
+    <div class="f-sannusann">
+      <label>Fasit</label>
+      <select id="e_tf"><option value="sant">Sant</option><option value="usant">Usant</option></select>
+    </div>
+    <div class="f-tekst">
+      <label>Godkjente svar (skill flere med | )</label>
+      <input id="e_txt" placeholder="Nidaros | Nidarosdomen">
+      <div class="small muted" style="margin-top:4px">Små/store bokstaver og tegnsetting ignoreres. Du kan alltid overstyre poengene selv.</div>
+    </div>
+    <div class="f-tall">
+      <label>Fasit (tall)</label>
+      <input id="e_num" inputmode="decimal" placeholder="110">
+      <label>Delpoeng-grense (±)</label>
+      <input id="e_tol" inputmode="decimal" placeholder="20">
+      <div class="small muted" style="margin-top:4px">Laget nærmest fasit får fulle poeng. Andre innenfor grensen får delpoeng etter hvor nærme de er. 0 eller tom = bare nærmeste får poeng.</div>
+    </div>
+    <label>Poeng for riktig / nærmest</label>
+    <input id="e_pts" type="number" min="0" step="1" value="3">
+    <div class="row" style="margin-top:20px;justify-content:flex-end">
+      <button type="button" class="btn ghost" data-act="edcancel">Avbryt</button>
+      <button type="button" class="btn" data-act="edsave">Lagre</button>
+    </div>
+  </form>
+</dialog>
+<input type="file" id="importfile" accept="application/json,.json" hidden>
+
+<script>
+/* ============================================================
+   Lagring: Firebase (ekte) eller localStorage (demo)
+   ============================================================ */
+function clone(v){return v===undefined?null:JSON.parse(JSON.stringify(v))}
+function makeDemoStore(){
+  const KEY='gameshow_demo_'+CONFIG.showId;
+  const load=()=>{try{return JSON.parse(localStorage.getItem(KEY))||{}}catch(e){return {}}};
+  let state=load();
+  const subs=new Set();
+  const keys=p=>p.split('/').filter(Boolean);
+  const getAt=(o,p)=>keys(p).reduce((x,k)=>x==null?undefined:x[k],o);
+  const setAt=(o,p,v)=>{const ks=keys(p);if(!ks.length)return v==null?{}:v;let x=o;
+    for(let i=0;i<ks.length-1;i++){if(typeof x[ks[i]]!=='object'||x[ks[i]]===null)x[ks[i]]={};x=x[ks[i]]}
+    if(v==null)delete x[ks[ks.length-1]];else x[ks[ks.length-1]]=v;return o};
+  const emit=()=>subs.forEach(f=>f());
+  const save=()=>{localStorage.setItem(KEY,JSON.stringify(state));emit()};
+  addEventListener('storage',e=>{if(e.key===KEY){state=load();emit()}});
+  return{demo:true,
+    on(p,cb){let last;const run=()=>{const v=getAt(state,p);const j=JSON.stringify(v===undefined?null:v);if(j!==last){last=j;cb(JSON.parse(j))}};subs.add(run);run();return()=>subs.delete(run)},
+    async set(p,v){state=setAt(state,p,clone(v));save()},
+    async update(p,o){for(const k in o)state=setAt(state,p+'/'+k,clone(o[k]));save()},
+    async remove(p){state=setAt(state,p,null);save()}};
+}
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+async function makeFirebaseStore(cfg){
+  const v='10.12.2';
+  await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-app-compat.js`);
+  await loadScript(`https://www.gstatic.com/firebasejs/${v}/firebase-database-compat.js`);
+  firebase.initializeApp(cfg);
+  const db=firebase.database();
+  const root='shows/'+CONFIG.showId;
+  const r=p=>db.ref(root+(p?'/'+p:''));
+  return{demo:false,
+    on(p,cb){const ref=r(p);const fn=s=>cb(s.val());ref.on('value',fn);return()=>ref.off('value',fn)},
+    set:(p,v)=>r(p).set(clone(v)),
+    update:(p,o)=>r(p).update(clone(o)),
+    remove:p=>r(p).remove()};
+}
+
+/* ============================================================
+   Hjelpere
+   ============================================================ */
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rid=()=>Math.random().toString(36).slice(2,10);
+const LETTERS='ABCDEFGHIJ';
+const num=v=>{if(v==null)return NaN;const s=String(v).replace(/\s/g,'').replace(',','.');return s===''?NaN:Number(s)};
+const norm=s=>String(s??'').toLowerCase().normalize('NFC').replace(/[.,!?;:"'()\-–]/g,' ').replace(/\s+/g,' ').trim();
+const fmt=n=>{n=Number(n)||0;return Number.isInteger(n)?String(n):n.toFixed(1).replace('.',',')};
+const TYPE_LABEL={tekst:'Ord',tall:'Tall',flervalg:'Flervalg',sannusann:'Sant/usant'};
+
+let store, S={};
+const me=()=>localStorage.getItem('gs_team_'+CONFIG.showId);
+const game=()=>S.game||{phase:'lobby'};
+const questions=()=>Object.entries(S.questions||{}).map(([id,q])=>({id,...q})).sort((a,b)=>(a.order||0)-(b.order||0));
+const qById=id=>{const q=S.questions?.[id];return q?{id,...q}:null};
+const qIndex=id=>questions().findIndex(q=>q.id===id);
+const teams=()=>Object.entries(S.teams||{}).map(([id,t])=>({id,...t})).sort((a,b)=>(a.joined||0)-(b.joined||0));
+const answersFor=qid=>S.answers?.[qid]||{};
+const scoresFor=qid=>S.scores?.[qid]||{};
+function total(tid){let s=0;for(const q in (S.scores||{})){const v=S.scores[q]?.[tid];if(typeof v==='number')s+=v}return s}
+function ranked(){return teams().map(t=>({...t,total:total(t.id)})).sort((a,b)=>b.total-a.total||(a.joined||0)-(b.joined||0))}
+const expired=()=>{const g=game();return !!g.deadline&&Date.now()>g.deadline};
+const remaining=()=>{const g=game();return g.deadline?Math.max(0,Math.ceil((g.deadline-Date.now())/1000)):null};
+
+function showAnswer(q,v){
+  if(v==null||v==='')return '—';
+  if(q.type==='flervalg'){const i=+v;return `${LETTERS[i]||'?'}: ${q.options?.[i]??''}`}
+  if(q.type==='sannusann')return v==='sant'?'Sant':'Usant';
+  if(q.type==='tekst')return String(v).split('|')[0].trim();
+  return String(v);
+}
+function suggest(q,ans){
+  const out={},P=Number(q.points)||0;
+  const ids=Object.keys(ans);
+  if(q.type==='tall'){
+    const target=num(q.answer),tol=num(q.tol);
+    const diffs=ids.map(t=>[t,Math.abs(num(ans[t].v)-target)]).filter(([,d])=>isFinite(d));
+    const best=diffs.length?Math.min(...diffs.map(d=>d[1])):Infinity;
+    for(const t of ids)out[t]=0;
+    for(const [t,d] of diffs){
+      if(d===best)out[t]=P;
+      else if(tol>0&&d<=tol)out[t]=Math.max(0,Math.min(P-1,Math.round(P*(1-d/tol))));
+    }
+  }else if(q.type==='tekst'){
+    const alts=String(q.answer||'').split('|').map(norm).filter(Boolean);
+    for(const t of ids)out[t]=alts.includes(norm(ans[t].v))?P:0;
+  }else{
+    for(const t of ids)out[t]=String(ans[t].v)===String(q.answer)?P:0;
+  }
+  return out;
+}
+
+/* Bytt innhold uten å miste fokus/tekst i feltet man skriver i */
+function patch(el,html){
+  if(el._html===html)return;
+  const a=document.activeElement;let keep=null;
+  if(a&&a.id&&el.contains(a)&&('value' in a))keep={id:a.id,v:a.value,s:a.selectionStart,e:a.selectionEnd};
+  el.innerHTML=html;el._html=html;
+  if(keep){const n=document.getElementById(keep.id);if(n){n.value=keep.v;n.focus();try{n.setSelectionRange(keep.s,keep.e)}catch(e){}}}
+}
+
+/* ============================================================
+   Visninger
+   ============================================================ */
+const app=$('#app');
+const view=()=>(location.hash.slice(1)||'').toLowerCase();
+const baseUrl=()=>location.href.split('#')[0];
+const demoBanner=()=>store?.demo?`<div class="banner"><b>Demo-modus.</b> Fungerer bare mellom faner i denne nettleseren. Legg inn Firebase-config i filen for å bruke den med mobiler.</div>`:'';
+
+function render(){
+  document.title=CONFIG.title;
+  const v=view();
+  document.body.dataset.view=v;
+  if(v!=='skjerm'&&v!=='storskjerm')stopConfetti();
+  if(v==='lag'||v==='mobil')return patch(app,renderTeam());
+  if(v==='skjerm'||v==='storskjerm')return patch(app,renderStage());
+  if(v==='dommer'||v==='admin')return patch(app,renderJudge());
+  patch(app,renderLanding());
+}
+
+function renderLanding(){
+  return `<div class="land"><div style="width:100%">
+    ${store?.demo?`<div style="max-width:760px;margin:0 auto">${demoBanner()}</div>`:''}
+    <h1>${esc(CONFIG.title)}</h1>
+    <div class="muted">${esc(CONFIG.subtitle)}</div>
+    <div class="choices">
+      <a class="card" href="#skjerm"><b>📺 Storskjerm</b><span class="muted small">Vises på prosjektoren. Spørsmål, svar og poengtavle.</span></a>
+      <a class="card" href="#lag"><b>📱 Lag</b><span class="muted small">For mobilene til gruppene. Her sender de inn svar.</span></a>
+      <a class="card" href="#dommer"><b>🎛️ Dommer</b><span class="muted small">Styrer showet, ser alle svar og deler ut poeng.</span></a>
+    </div></div></div>`;
+}
+
+/* ---------- LAG ---------- */
+function renderTeam(){
+  const tid=me(),team=tid&&S.teams?.[tid];
+  if(!team){
+    return `<div class="phone"><div class="center">
+      ${demoBanner()}
+      <h1 style="color:var(--gold);font-size:2.4rem">${esc(CONFIG.title)}</h1>
+      <p class="muted">Skriv inn navnet på laget deres</p>
+      <input id="teamName" class="ansinput" maxlength="30" placeholder="Lagnavn" autocomplete="off">
+      <button class="btn" style="margin-top:12px;width:100%;font-size:1.1rem" data-act="join">Bli med</button>
+    </div></div>`;
+  }
+  const g=game(),q=g.qid&&qById(g.qid);
+  const head=`<header><span class="name">${esc(team.name)}</span><span class="pill">${fmt(total(tid))} p</span></header>`;
+  let body='';
+  if(g.phase==='lobby'||!q&&['open','locked','reveal'].includes(g.phase)){
+    body=`<div class="center"><div style="font-size:3rem">🎤</div><h2>Dere er med!</h2><p class="muted">Følg med på storskjermen. Spørsmålene dukker opp her.</p></div>`;
+  }else if(g.phase==='open'){
+    const mine=answersFor(q.id)[tid];const closed=expired();const n=qIndex(q.id)+1;
+    let input='';
+    if(q.type==='flervalg'){
+      input=(q.options||[]).map((o,i)=>`<button class="choice ${mine&&String(mine.v)===String(i)?'sel':''}" data-act="pick" data-v="${i}" ${closed?'disabled':''}><span class="l">${LETTERS[i]}</span>${esc(o)}</button>`).join('');
+    }else if(q.type==='sannusann'){
+      input=`<div class="tf">${['sant','usant'].map(v=>`<button class="choice ${mine?.v===v?'sel':''}" data-act="pick" data-v="${v}" ${closed?'disabled':''}>${v==='sant'?'✅ Sant':'❌ Usant'}</button>`).join('')}</div>`;
+    }else{
+      input=`<input id="ans_${q.id}" class="ansinput" ${q.type==='tall'?'inputmode="decimal"':''} placeholder="${q.type==='tall'?'Skriv et tall':'Skriv svaret'}" autocomplete="off" ${closed?'disabled':''}>
+        <button class="btn" style="margin-top:10px;width:100%;font-size:1.1rem" data-act="submit" ${closed?'disabled':''}>${mine?'Endre svar':'Send svar'}</button>`;
+    }
+    body=`<div class="muted small">Spørsmål ${n} · ${TYPE_LABEL[q.type]}${g.deadline?` · <span class="countdown" data-countdown></span>`:''}</div>
+      <div class="big">${esc(q.text)}</div>${input}
+      ${mine?`<div class="sent">✓ Sendt: <b>${esc(showAnswer(q,mine.v))}</b>${closed?'':'<br><span class="small">Dere kan endre til svarene låses.</span>'}</div>`:''}
+      ${closed&&!mine?`<div class="sent" style="background:#3a1414;border-color:#7a2f2f;color:#ffc9c9">Tiden er ute.</div>`:''}`;
+  }else if(g.phase==='locked'){
+    const mine=answersFor(q.id)[tid];
+    body=`<div class="center"><div style="font-size:3rem">🔒</div><h2>Svarene er låst</h2>
+      <p class="muted">Deres svar: <b style="color:var(--text)">${esc(mine?showAnswer(q,mine.v):'ingen svar')}</b></p></div>`;
+  }else if(g.phase==='reveal'){
+    const mine=answersFor(q.id)[tid];const p=scoresFor(q.id)[tid];
+    body=`<div class="center"><div class="muted">Fasit</div><h1 style="color:var(--green)">${esc(showAnswer(q,q.answer))}</h1>
+      <p class="muted">Deres svar: <b style="color:var(--text)">${esc(mine?showAnswer(q,mine.v):'ingen svar')}</b></p>
+      ${typeof p==='number'?`<h2 style="color:var(--gold)">+${fmt(p)} poeng</h2>`:'<p class="muted">Dommeren deler ut poeng …</p>'}</div>`;
+  }else{
+    const r=ranked();const pos=r.findIndex(t=>t.id===tid)+1;
+    body=`<div class="center"><div style="font-size:3rem">${g.phase==='winner'&&pos===1?'🏆':'📊'}</div>
+      <h2>${g.phase==='winner'&&pos===1?'Dere vant!':`Plass ${pos} av ${r.length}`}</h2>
+      <p class="muted">${fmt(total(tid))} poeng totalt</p></div>`;
+  }
+  return `<div class="phone">${head}${body}</div>`;
+}
+
+/* ---------- STORSKJERM ---------- */
+function qrSvg(text){
+  try{const qr=qrcode(0,'M');qr.addData(text);qr.make();return qr.createSvgTag({cellSize:6,margin:1,scalable:true})}catch(e){return ''}
+}
+function renderStage(){
+  const g=game(),q=g.qid&&qById(g.qid),qs=questions(),ts=teams();
+  const top=`<div class="top"><span><b>${esc(CONFIG.title)}</b>${CONFIG.subtitle?' · '+esc(CONFIG.subtitle):''}</span>
+    <span>${q&&['open','locked','reveal'].includes(g.phase)?`Spørsmål ${qIndex(q.id)+1} av ${qs.length}`:`${ts.length} lag`}</span></div>`;
+  const fs=`<button class="btn ghost sm fsbtn" data-act="fullscreen">⛶ Fullskjerm</button>`;
+  let main='';
+  if(g.phase==='lobby'||(!q&&['open','locked','reveal'].includes(g.phase))){
+    const url=CONFIG.lagLenke||baseUrl()+'#lag';
+    main=`<h1 class="title">${esc(CONFIG.title)}</h1><div class="sub">${esc(CONFIG.subtitle)}</div>
+      <div class="join"><div class="qr">${qrSvg(url)}</div>
+      <div><div class="muted" style="font-size:clamp(1rem,1.6vw,1.6rem)">Skann eller gå til</div><div class="url"><b>${esc(url)}</b></div></div></div>
+      <div class="chips">${ts.map(t=>`<span class="chip on">${esc(t.name)}</span>`).join('')||'<span class="muted">Venter på lag …</span>'}</div>`;
+  }else if(g.phase==='open'||g.phase==='locked'){
+    const ans=answersFor(q.id);const cnt=ts.filter(t=>ans[t.id]).length;
+    main=`<div class="q">${esc(q.text)}</div>${optionsHtml(q,false)}
+      <div class="status">${g.phase==='locked'?'<span>🔒 Svarene er låst</span>':(g.deadline?'<span class="countdown" data-countdown></span>':'')}
+      <span class="muted">${cnt} av ${ts.length} lag har svart</span></div>
+      <div class="chips">${ts.map(t=>`<span class="chip ${ans[t.id]?'on':''}">${esc(t.name)}</span>`).join('')}</div>`;
+  }else if(g.phase==='reveal'){
+    const ans=answersFor(q.id),sc=scoresFor(q.id),P=Number(q.points)||0;
+    let rows=ts.map(t=>({t,a:ans[t.id],p:sc[t.id]}));
+    if(q.type==='tall'){const tg=num(q.answer);rows.sort((x,y)=>(Math.abs(num(x.a?.v)-tg)||Infinity)-(Math.abs(num(y.a?.v)-tg)||Infinity))}
+    else rows.sort((x,y)=>(y.p??-1)-(x.p??-1));
+    main=`<div class="q" style="font-size:clamp(1.4rem,2.8vw,3rem);margin-bottom:2vh">${esc(q.text)}</div>
+      ${q.type==='flervalg'?optionsHtml(q,true):`<div class="answer"><small>Fasit</small>${esc(showAnswer(q,q.answer))}</div>`}
+      <div class="reslist" style="margin-top:3vh">${rows.map(({t,a,p})=>`<div class="res ${typeof p==='number'&&p>=P&&P>0?'full':''}">
+        <div><div class="who">${esc(t.name)}</div><div class="what">${esc(a?showAnswer(q,a.v):'ingen svar')}</div></div>
+        <div class="pts">${typeof p==='number'?'+'+fmt(p):''}</div></div>`).join('')}</div>`;
+  }else if(g.phase==='score'){
+    const r=ranked();const max=Math.max(1,...r.map(t=>t.total));
+    main=`<h1 style="text-align:center;font-size:clamp(2rem,5vw,5rem);margin-bottom:4vh">Poengtavle</h1>
+      <div class="board">${r.map((t,i)=>`<div class="bar"><span class="rank">${i+1}</span>
+      <div class="track"><div class="fill" style="width:${Math.max(4,t.total/max*100)}%"></div><span class="lbl">${esc(t.name)}</span></div>
+      <span class="sc">${fmt(t.total)}</span></div>`).join('')}</div>`;
+  }else if(g.phase==='winner'){
+    const r=ranked();const top=r[0];const winners=top?r.filter(t=>t.total===top.total):[];
+    main=`<div class="winner"><div class="crown">🏆</div><div class="muted" style="font-size:clamp(1rem,2vw,2rem);text-transform:uppercase;letter-spacing:.2em">${winners.length>1?'Vinnerne er':'Vinneren er'}</div>
+      <div class="wn">${winners.map(w=>esc(w.name)).join(' & ')||'—'}</div>
+      <div class="muted" style="font-size:clamp(1rem,2vw,2rem)">${top?fmt(top.total)+' poeng':''}</div>
+      <div class="podium">${r.slice(winners.length,winners.length+3).map((t,i)=>`<div><span class="muted">${winners.length+i+1}. plass</span><b>${esc(t.name)}</b>${fmt(t.total)} p</div>`).join('')}</div></div>`;
+  }
+  return `<div class="stage">${top}<div class="main">${main}</div></div>${fs}`;
+}
+function optionsHtml(q,reveal){
+  if(q.type==='flervalg'){
+    return `<div class="opts">${(q.options||[]).map((o,i)=>{const right=String(i)===String(q.answer);
+      return `<div class="opt ${reveal?(right?'right':'dim'):''}"><span class="l">${LETTERS[i]}</span>${esc(o)}</div>`}).join('')}</div>`;
+  }
+  if(q.type==='sannusann')return `<div class="opts" style="max-width:900px"><div class="opt">✅ Sant</div><div class="opt">❌ Usant</div></div>`;
+  return '';
+}
+
+/* ---------- DOMMER ---------- */
+let gradeQ=null;
+function renderJudge(){
+  if(CONFIG.dommerPin&&sessionStorage.getItem('gs_pin')!==CONFIG.dommerPin){
+    return `<div class="phone"><div class="center"><h1>🎛️ Dommer</h1><p class="muted">Skriv inn koden</p>
+      <input id="pin" class="ansinput" type="password" inputmode="numeric" autocomplete="off">
+      <button class="btn" style="margin-top:10px;width:100%" data-act="pin">Åpne</button></div></div>`;
+  }
+  const g=game(),qs=questions(),ts=teams(),cur=g.qid&&qById(g.qid);
+  const gq=(gradeQ&&qById(gradeQ))||cur;
+  const phaseName={lobby:'Lobby',open:'Svar åpne',locked:'Svar låst',reveal:'Viser fasit',score:'Poengtavle',winner:'Vinner kåret'}[g.phase]||g.phase;
+  const idx=cur?qIndex(cur.id):-1;const next=qs[idx+1];
+
+  const control=`<div class="card">
+    <div class="row" style="justify-content:space-between"><div><div class="muted small">Nå på skjermen</div>
+      <div class="phase">${esc(phaseName)}${cur&&['open','locked','reveal'].includes(g.phase)?` · Spm. ${idx+1}`:''}
+      ${g.phase==='open'&&g.deadline?` · <span class="countdown" data-countdown></span>`:''}</div></div>
+      <div class="row small"><a href="#skjerm" target="_blank">Åpne storskjerm ↗</a><a href="#lag" target="_blank">Lag-side ↗</a></div></div>
+    <div class="ctrl">
+      ${next?`<button class="btn" data-act="show" data-q="${next.id}">▶ ${cur?'Neste':'Første'} spørsmål (${qIndex(next.id)+1})</button>`:''}
+      ${cur&&g.phase==='open'?`<span class="row" style="gap:6px"><input id="secs" type="number" value="30" min="5" style="width:80px"><button class="btn ghost" data-act="timer">⏱ Start nedtelling</button></span>
+        <button class="btn ghost" data-act="lock">🔒 Lås svar</button>`:''}
+      ${cur&&(g.phase==='open'||g.phase==='locked')?`<button class="btn teal" data-act="reveal">Vis fasit og svar</button>`:''}
+      ${cur&&g.phase==='reveal'?`<button class="btn ghost" data-act="show" data-q="${cur.id}">↺ Åpne spørsmålet igjen</button>`:''}
+      <button class="btn ghost" data-act="phase" data-v="score">📊 Poengtavle</button>
+      <button class="btn ghost" data-act="phase" data-v="winner">🏆 Kår vinner</button>
+      <button class="btn ghost" data-act="phase" data-v="lobby">Lobby</button>
+    </div></div>`;
+
+  let grading='<div class="empty">Velg «Rett» på et spørsmål for å se svarene og gi poeng.</div>';
+  if(gq){
+    const ans=answersFor(gq.id),sc=scoresFor(gq.id),sug=suggest(gq,ans);
+    grading=`<div class="row" style="justify-content:space-between;margin-bottom:8px">
+      <div><div class="muted small">Retter spørsmål ${qIndex(gq.id)+1} · ${TYPE_LABEL[gq.type]} · ${fmt(gq.points)} p</div>
+      <b>${esc(gq.text)}</b><div class="small" style="color:var(--green)">Fasit: ${esc(showAnswer(gq,gq.answer))}${gq.type==='tall'&&num(gq.tol)>0?` (delpoeng ±${esc(gq.tol)})`:''}</div></div>
+      <button class="btn sm teal" data-act="apply" data-q="${gq.id}" ${Object.keys(ans).length?'':'disabled'}>Bruk alle forslag</button></div>
+      <table><thead><tr><th>Lag</th><th>Svar</th><th>Forslag</th><th>Poeng</th></tr></thead><tbody>
+      ${ts.map(t=>{const a=ans[t.id];return `<tr><td>${esc(t.name)}</td><td>${a?esc(showAnswer(gq,a.v)):'<span class="muted">—</span>'}</td>
+        <td class="sug">${a&&t.id in sug?fmt(sug[t.id]):''}</td>
+        <td><input id="sc_${gq.id}_${t.id}" type="number" step="0.5" data-score="${t.id}" data-q="${gq.id}" value="${typeof sc[t.id]==='number'?sc[t.id]:''}"></td></tr>`}).join('')||'<tr><td colspan="4" class="muted">Ingen lag ennå</td></tr>'}
+      </tbody></table>`;
+  }
+
+  const qlist=`<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:10px"><h3 style="margin:0">Spørsmål (${qs.length})</h3>
+    <div class="row"><button class="btn sm ghost" data-act="export">Eksporter</button><button class="btn sm ghost" data-act="import">Importer</button><button class="btn sm" data-act="newq">+ Nytt</button></div></div>
+    ${qs.map((q,i)=>`<div class="qitem ${cur?.id===q.id?'cur':''}"><span class="num">${i+1}</span>
+      <div><div class="t">${esc(q.text)}</div><div class="meta">${TYPE_LABEL[q.type]} · ${fmt(q.points)} p · fasit: ${esc(showAnswer(q,q.answer))} · ${Object.keys(answersFor(q.id)).length} svar</div></div>
+      <div class="acts"><button class="btn sm" data-act="show" data-q="${q.id}" title="Vis på storskjerm">▶</button>
+      <button class="btn sm ghost" data-act="grade" data-q="${q.id}">Rett</button>
+      <button class="btn sm ghost" data-act="up" data-q="${q.id}" title="Flytt opp">↑</button>
+      <button class="btn sm ghost" data-act="editq" data-q="${q.id}">Rediger</button>
+      <button class="btn sm ghost" data-act="delq" data-q="${q.id}" title="Slett">✕</button></div></div>`).join('')||'<div class="empty">Ingen spørsmål ennå. Trykk «+ Nytt».</div>'}
+  </div>`;
+
+  const r=ranked();
+  const tlist=`<div class="card"><h3>Lag og poeng</h3>
+    <table><thead><tr><th>#</th><th>Lag</th><th>Bonus</th><th>Totalt</th><th></th></tr></thead><tbody>
+    ${r.map((t,i)=>`<tr><td>${i+1}</td><td>${esc(t.name)}</td>
+      <td><input id="bonus_${t.id}" type="number" step="0.5" data-score="${t.id}" data-q="bonus" value="${typeof S.scores?.bonus?.[t.id]==='number'?S.scores.bonus[t.id]:''}"></td>
+      <td><b>${fmt(t.total)}</b></td><td><button class="btn sm ghost" data-act="delteam" data-t="${t.id}">✕</button></td></tr>`).join('')||'<tr><td colspan="5" class="muted">Ingen lag har blitt med ennå</td></tr>'}
+    </tbody></table>
+    <div class="row" style="margin-top:14px"><button class="btn sm ghost" data-act="resetanswers">Nullstill svar og poeng</button>
+    <button class="btn sm red" data-act="resetall">Nullstill alt (også lag)</button></div></div>`;
+
+  return `<div class="wrap judge">${demoBanner()}
+    <div class="row" style="justify-content:space-between;margin-bottom:14px"><h1 style="margin:0">🎛️ Dommerpanel</h1><span class="muted">${esc(CONFIG.title)}</span></div>
+    ${control}
+    <div class="cols" style="margin-top:16px">
+      <div class="grid"><div class="card">${grading}</div>${qlist}</div>
+      <div class="grid">${tlist}</div>
+    </div></div>`;
+}
+
+/* ============================================================
+   Spørsmålsredigering
+   ============================================================ */
+let editId=null;
+const ed=$('#ed'),edform=$('#edform');
+$('#e_type').addEventListener('change',e=>edform.dataset.type=e.target.value);
+function openEditor(id){
+  editId=id;const q=id?qById(id):{type:'tekst',points:3};
+  $('#edtitle').textContent=id?'Rediger spørsmål':'Nytt spørsmål';
+  $('#e_type').value=q.type;edform.dataset.type=q.type;
+  $('#e_text').value=q.text||'';$('#e_pts').value=q.points??3;
+  $('#e_opts').value=(q.options||[]).join('\n');
+  $('#e_mc').value=q.type==='flervalg'&&q.answer!=null?LETTERS[+q.answer]||'':'';
+  $('#e_tf').value=q.type==='sannusann'?q.answer:'sant';
+  $('#e_txt').value=q.type==='tekst'?q.answer||'':'';
+  $('#e_num').value=q.type==='tall'?q.answer??'':'';
+  $('#e_tol').value=q.type==='tall'?q.tol??'':'';
+  ed.showModal();
+}
+function saveEditor(){
+  const type=$('#e_type').value,text=$('#e_text').value.trim();
+  if(!text)return alert('Skriv inn spørsmålet.');
+  const q={type,text,points:Number($('#e_pts').value)||0};
+  if(type==='flervalg'){
+    q.options=$('#e_opts').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(q.options.length<2)return alert('Legg inn minst to alternativer.');
+    const i=LETTERS.indexOf($('#e_mc').value.trim().toUpperCase());
+    if(i<0||i>=q.options.length)return alert('Riktig alternativ må være en av bokstavene '+LETTERS.slice(0,q.options.length).split('').join(', ')+'.');
+    q.answer=String(i);
+  }else if(type==='sannusann')q.answer=$('#e_tf').value;
+  else if(type==='tekst'){q.answer=$('#e_txt').value.trim();if(!q.answer)return alert('Skriv inn minst ett godkjent svar.')}
+  else{q.answer=$('#e_num').value.trim();if(!isFinite(num(q.answer)))return alert('Fasit må være et tall.');const t=$('#e_tol').value.trim();q.tol=t===''?0:num(t)}
+  const qs=questions();
+  if(editId){q.order=S.questions[editId].order;store.set('questions/'+editId,q)}
+  else{q.order=(qs.length?Math.max(...qs.map(x=>x.order||0)):0)+1;store.set('questions/'+rid(),q)}
+  ed.close();
+}
+
+/* ============================================================
+   Handlinger
+   ============================================================ */
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]');if(!b||b.disabled)return;
+  const act=b.dataset.act,qid=b.dataset.q,g=game();
+  switch(act){
+    case 'join':{const name=$('#teamName').value.trim();if(!name)return;const id=rid();
+      localStorage.setItem('gs_team_'+CONFIG.showId,id);await store.set('teams/'+id,{name,joined:Date.now()});break}
+    case 'pick':case 'submit':{
+      if(g.phase!=='open'||expired())return;const tid=me();
+      let v=act==='pick'?b.dataset.v:$('#ans_'+g.qid)?.value.trim();
+      if(!v)return;
+      const q=qById(g.qid);if(q.type==='tall'&&!isFinite(num(v)))return alert('Skriv et tall.');
+      await store.set(`answers/${g.qid}/${tid}`,{v,t:Date.now()});
+      const inp=$('#ans_'+g.qid);if(inp){inp.value='';inp.blur()}
+      break}
+    case 'pin':if($('#pin').value===CONFIG.dommerPin){sessionStorage.setItem('gs_pin',CONFIG.dommerPin);render()}else alert('Feil kode');break;
+    case 'show':gradeQ=qid;await store.set('game',{phase:'open',qid,deadline:null});break;
+    case 'timer':{const s=Math.max(3,Number($('#secs').value)||30);await store.set('game/deadline',Date.now()+s*1000);break}
+    case 'lock':await store.update('game',{phase:'locked',deadline:null});break;
+    case 'reveal':await store.update('game',{phase:'reveal',deadline:null});break;
+    case 'phase':await store.update('game',{phase:b.dataset.v,deadline:null});break;
+    case 'grade':gradeQ=qid;render();break;
+    case 'apply':{const q=qById(qid);await store.update('scores/'+qid,suggest(q,answersFor(qid)));break}
+    case 'newq':openEditor(null);break;
+    case 'editq':openEditor(qid);break;
+    case 'edsave':saveEditor();break;
+    case 'edcancel':ed.close();break;
+    case 'delq':if(confirm('Slette dette spørsmålet og svarene på det?')){await store.remove('questions/'+qid);await store.remove('answers/'+qid);await store.remove('scores/'+qid);if(g.qid===qid)await store.set('game',{phase:'lobby'})}break;
+    case 'up':{const qs=questions(),i=qs.findIndex(q=>q.id===qid);if(i>0){const a=qs[i],p=qs[i-1];
+      await store.update('questions',{[a.id+'/order']:p.order||0,[p.id+'/order']:(a.order||0)===(p.order||0)?(a.order||0)+1:a.order})}break}
+    case 'delteam':if(confirm('Fjerne laget?'))await store.remove('teams/'+b.dataset.t);break;
+    case 'resetanswers':if(confirm('Slette alle svar og poeng? Lagene og spørsmålene beholdes.')){await store.remove('answers');await store.remove('scores');await store.set('game',{phase:'lobby'})}break;
+    case 'resetall':if(confirm('Slette alle lag, svar og poeng? Spørsmålene beholdes.')){await store.remove('answers');await store.remove('scores');await store.remove('teams');await store.set('game',{phase:'lobby'})}break;
+    case 'export':{const data=questions().map(({id,order,...q})=>q);
+      const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+      a.download='sporsmal.json';a.click();break}
+    case 'import':$('#importfile').click();break;
+    case 'fullscreen':document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen?.();break;
+  }
+});
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.dataset.score){const p=`scores/${el.dataset.q}/${el.dataset.score}`;const v=el.value.trim();
+    v===''?store.remove(p):store.set(p,num(v)||0)}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter')return;
+  if(e.target.id==='teamName')$('[data-act=join]')?.click();
+  else if(e.target.id?.startsWith('ans_'))$('[data-act=submit]')?.click();
+  else if(e.target.id==='pin')$('[data-act=pin]')?.click();
+});
+$('#importfile').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{const arr=JSON.parse(await f.text());if(!Array.isArray(arr))throw 0;
+    let o=(questions().reduce((m,q)=>Math.max(m,q.order||0),0));const upd={};
+    for(const q of arr){if(!q.text||!TYPE_LABEL[q.type])continue;upd[rid()]={...q,order:++o}}
+    await store.update('questions',upd);alert(Object.keys(upd).length+' spørsmål importert.');
+  }catch(err){alert('Kunne ikke lese filen. Den må være en eksport fra denne siden.')}
+  e.target.value='';
+});
+
+/* ============================================================
+   Nedtelling, konfetti, oppstart
+   ============================================================ */
+let lastExp=null,lastPhase=null;
+setInterval(()=>{
+  const r=remaining();
+  document.querySelectorAll('[data-countdown]').forEach(n=>n.textContent=r==null?'':(r>0?r+' s':'Tiden er ute'));
+  const ex=expired();if(ex!==lastExp){lastExp=ex;render()}
+  // Dommerens fane låser automatisk når tiden er ute
+  const g=game();
+  if((view()==='dommer'||view()==='admin')&&g.phase==='open'&&ex&&sessionStorage.getItem('gs_pin')===CONFIG.dommerPin)
+    store.update('game',{phase:'locked',deadline:null});
+},250);
+
+const cv=$('#confetti'),cx=cv.getContext('2d');let parts=[],raf=null;
+function startConfetti(){
+  cv.width=innerWidth;cv.height=innerHeight;const cols=['#f2c14e','#43d1c0','#ff6b6b','#ffffff','#7c8cff'];
+  parts=Array.from({length:220},()=>({x:Math.random()*cv.width,y:-20-Math.random()*cv.height,r:4+Math.random()*6,c:cols[Math.random()*cols.length|0],vy:2+Math.random()*3,vx:-1+Math.random()*2,a:Math.random()*6,va:-.1+Math.random()*.2}));
+  if(!raf)loop();
+}
+function loop(){cx.clearRect(0,0,cv.width,cv.height);
+  for(const p of parts){p.y+=p.vy;p.x+=p.vx+Math.sin(p.y/40);p.a+=p.va;if(p.y>cv.height+20){p.y=-20;p.x=Math.random()*cv.width}
+    cx.save();cx.translate(p.x,p.y);cx.rotate(p.a);cx.fillStyle=p.c;cx.fillRect(-p.r/2,-p.r/4,p.r,p.r/2);cx.restore()}
+  raf=requestAnimationFrame(loop)}
+function stopConfetti(){if(raf)cancelAnimationFrame(raf);raf=null;cx.clearRect(0,0,cv.width,cv.height)}
+
+function onData(v){
+  S=v||{};render();
+  const ph=game().phase,isStage=['skjerm','storskjerm'].includes(view());
+  if(isStage&&ph==='winner'&&lastPhase!=='winner')startConfetti();
+  if(ph!=='winner')stopConfetti();
+  lastPhase=ph;
+}
+addEventListener('hashchange',()=>{lastPhase=null;onData(S)});
+(async()=>{
+  app.innerHTML='<div class="land"><div class="muted">Kobler til …</div></div>';
+  try{store=CONFIG.firebase?await makeFirebaseStore(CONFIG.firebase):makeDemoStore()}
+  catch(e){app.innerHTML='<div class="land"><div><h2>Kunne ikke koble til Firebase</h2><p class="muted">Sjekk config-en øverst i filen.</p></div></div>';return}
+  store.on('',onData);
+})();
+</script>
+</body>
+</html>
