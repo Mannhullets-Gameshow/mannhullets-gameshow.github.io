@@ -155,11 +155,18 @@ dialog label{display:block;font-size:.85rem;color:var(--muted);margin:12px 0 5px
 .f-tall,.f-tekst,.f-flervalg,.f-sannusann{display:none}
 form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flervalg] .f-flervalg,form[data-type=sannusann] .f-sannusann{display:block}
 .empty{padding:20px;text-align:center;color:var(--muted);border:1.5px dashed var(--line);border-radius:12px}
+#videolayer{position:fixed;inset:0;background:#000;z-index:20;display:none}
+#videolayer.on{display:block}
+#videolayer video,#videolayer iframe,#videolayer .yt{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:contain;background:#000}
+#videolayer .playbtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:1.6rem;z-index:2}
+#unlock{position:fixed;inset:0;z-index:30;background:rgba(5,8,20,.92);display:grid;place-items:center;text-align:center;cursor:pointer;padding:16px}
+#unlock h2{font-size:clamp(1.6rem,4vw,3rem);color:var(--gold)}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <canvas id="confetti"></canvas>
+<div id="videolayer"></div>
 
 <dialog id="ed">
   <form id="edform" method="dialog" data-type="tekst">
@@ -195,6 +202,9 @@ form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flerv
       <input id="e_tol" inputmode="decimal" placeholder="20">
       <div class="small muted" style="margin-top:4px">Laget nærmest fasit får fulle poeng. Andre innenfor grensen får delpoeng etter hvor nærme de er. 0 eller tom = bare nærmeste får poeng.</div>
     </div>
+    <label>Svarvideo (valgfritt)</label>
+    <input id="e_video" placeholder="YouTube-lenke eller lenke til videofil">
+    <div class="small muted" style="margin-top:4px">Spilles av på storskjermen når tiden er ute. Fasit og svar vises når videoen er ferdig. Tips: last opp på YouTube som «Unotert» (unlisted).</div>
     <label>Poeng for riktig / nærmest</label>
     <input id="e_pts" type="number" min="0" step="1" value="3">
     <div class="small muted" style="margin-top:12px">🔒 Fasiten lagres skjult og vises ikke for lagene før du trykker «Vis fasit».</div>
@@ -280,6 +290,9 @@ const scoresFor=qid=>S.scores?.[qid]||{};
 function total(tid){let s=0;for(const q in (S.scores||{})){const v=S.scores[q]?.[tid];if(typeof v==='number')s+=v}return s}
 function ranked(){return teams().map(t=>({...t,total:total(t.id)})).sort((a,b)=>b.total-a.total||(a.joined||0)-(b.joined||0))}
 const expired=()=>{const g=game();return !!g.deadline&&now()>g.deadline};
+const ACTIVE=['open','locked','video','reveal'];
+const lockPhase=qid=>S.secret?.[qid]?.video?'video':'locked';
+async function doReveal(qid){const sec=S.secret?.[qid];if(sec)await store.set('revealed/'+qid,sec);await store.update('game',{phase:'reveal',deadline:null})}
 const remaining=()=>{const g=game();return g.deadline?Math.max(0,Math.ceil((g.deadline-now())/1000)):null};
 
 function showAnswer(q,v){
@@ -377,7 +390,7 @@ function renderTeam(){
   const g=game(),q=g.qid&&qById(g.qid);
   const head=`<header><span class="name">${esc(team.name)}</span><span class="pill">${fmt(total(tid))} p</span></header>`;
   let body='';
-  if(g.phase==='lobby'||!q&&['open','locked','reveal'].includes(g.phase)){
+  if(g.phase==='lobby'||!q&&ACTIVE.includes(g.phase)){
     body=`<div class="center"><div style="font-size:3rem">🎤</div><h2>Dere er med!</h2><p class="muted">Følg med på storskjermen. Spørsmålene dukker opp her.</p></div>`;
   }else if(g.phase==='open'){
     const mine=answersFor(q.id)[tid];const closed=expired();const n=qIndex(q.id)+1;
@@ -394,9 +407,9 @@ function renderTeam(){
       <div class="big">${esc(q.text)}</div>${input}
       ${mine?`<div class="sent">✓ Sendt: <b>${esc(showAnswer(q,mine.v))}</b>${closed?'':'<br><span class="small">Dere kan endre til svarene låses.</span>'}</div>`:''}
       ${closed&&!mine?`<div class="sent" style="background:#3a1414;border-color:#7a2f2f;color:#ffc9c9">Tiden er ute.</div>`:''}`;
-  }else if(g.phase==='locked'){
+  }else if(g.phase==='locked'||g.phase==='video'){
     const mine=answersFor(q.id)[tid];
-    body=`<div class="center"><div style="font-size:3rem">🔒</div><h2>Svarene er låst</h2>
+    body=`<div class="center"><div style="font-size:3rem">${g.phase==='video'?'🎬':'🔒'}</div><h2>${g.phase==='video'?'Følg med på skjermen!':'Svarene er låst'}</h2>
       <p class="muted">Deres svar: <b style="color:var(--text)">${esc(mine?showAnswer(q,mine.v):'ingen svar')}</b></p></div>`;
   }else if(g.phase==='reveal'){
     const mine=answersFor(q.id)[tid];const p=scoresFor(q.id)[tid];
@@ -419,19 +432,19 @@ function qrSvg(text){
 function renderStage(){
   const g=game(),q=g.qid&&qById(g.qid),qs=questions(),ts=teams();
   const top=`<div class="top"><span><b>${esc(CONFIG.title)}</b>${CONFIG.subtitle?' · '+esc(CONFIG.subtitle):''}</span>
-    <span>${q&&['open','locked','reveal'].includes(g.phase)?`Spørsmål ${qIndex(q.id)+1} av ${qs.length}`:`${ts.length} lag`}</span></div>`;
+    <span>${q&&ACTIVE.includes(g.phase)?`Spørsmål ${qIndex(q.id)+1} av ${qs.length}`:`${ts.length} lag`}</span></div>`;
   const fs=`<button class="btn ghost sm fsbtn" data-act="fullscreen">⛶ Fullskjerm</button>`;
   let main='';
-  if(g.phase==='lobby'||(!q&&['open','locked','reveal'].includes(g.phase))){
+  if(g.phase==='lobby'||(!q&&ACTIVE.includes(g.phase))){
     const url=CONFIG.lagLenke||baseUrl()+'#lag';
     main=`<h1 class="title">${esc(CONFIG.title)}</h1><div class="sub">${esc(CONFIG.subtitle)}</div>
       <div class="join"><div class="qr">${qrSvg(url)}</div>
       <div><div class="muted" style="font-size:clamp(1rem,1.6vw,1.6rem)">Skann eller gå til</div><div class="url"><b>${esc(url)}</b></div></div></div>
       <div class="chips">${ts.map(t=>`<span class="chip on">${esc(t.name)}</span>`).join('')||'<span class="muted">Venter på lag …</span>'}</div>`;
-  }else if(g.phase==='open'||g.phase==='locked'){
+  }else if(g.phase==='open'||g.phase==='locked'||g.phase==='video'){
     const ans=answersFor(q.id);const cnt=ts.filter(t=>ans[t.id]).length;
     main=`<div class="q">${esc(q.text)}</div>${optionsHtml(q,false)}
-      <div class="status">${g.phase==='locked'?'<span>🔒 Svarene er låst</span>':(g.deadline?'<span class="countdown" data-countdown></span>':'')}
+      <div class="status">${g.phase!=='open'?'<span>🔒 Svarene er låst</span>':(g.deadline?'<span class="countdown" data-countdown></span>':'')}
       <span class="muted">${cnt} av ${ts.length} lag har svart</span></div>
       <div class="chips">${ts.map(t=>`<span class="chip ${ans[t.id]?'on':''}">${esc(t.name)}</span>`).join('')}</div>`;
   }else if(g.phase==='reveal'){
@@ -473,19 +486,22 @@ let gradeQ=null;
 function renderJudge(){
   const g=game(),qs=questions(),ts=teams(),cur=g.qid&&qById(g.qid);
   const gq=(gradeQ&&qById(gradeQ))||cur;
-  const phaseName={lobby:'Lobby',open:'Svar åpne',locked:'Svar låst',reveal:'Viser fasit',score:'Poengtavle',winner:'Vinner kåret'}[g.phase]||g.phase;
+  const phaseName={lobby:'Lobby',open:'Svar åpne',locked:'Svar låst',video:'Spiller svarvideo',reveal:'Viser fasit',score:'Poengtavle',winner:'Vinner kåret'}[g.phase]||g.phase;
   const idx=cur?qIndex(cur.id):-1;const next=qs[idx+1];
 
   const control=`<div class="card">
     <div class="row" style="justify-content:space-between"><div><div class="muted small">Nå på skjermen</div>
-      <div class="phase">${esc(phaseName)}${cur&&['open','locked','reveal'].includes(g.phase)?` · Spm. ${idx+1}`:''}
+      <div class="phase">${esc(phaseName)}${cur&&ACTIVE.includes(g.phase)?` · Spm. ${idx+1}`:''}
       ${g.phase==='open'&&g.deadline?` · <span class="countdown" data-countdown></span>`:''}</div></div>
       <div class="row small"><a href="#skjerm" target="_blank">Åpne storskjerm ↗</a><a href="#lag" target="_blank">Lag-side ↗</a></div></div>
     <div class="ctrl">
       ${next?`<button class="btn" data-act="show" data-q="${next.id}">▶ ${cur?'Neste':'Første'} spørsmål (${qIndex(next.id)+1})</button>`:''}
       ${cur&&g.phase==='open'?`<span class="row" style="gap:6px"><input id="secs" type="number" value="30" min="5" style="width:80px"><button class="btn ghost" data-act="timer">⏱ Start nedtelling</button></span>
         <button class="btn ghost" data-act="lock">🔒 Lås svar</button>`:''}
-      ${cur&&(g.phase==='open'||g.phase==='locked')?`<button class="btn teal" data-act="reveal">Vis fasit og svar</button>`:''}
+      ${cur&&(g.phase==='open'||g.phase==='locked')&&cur.video?`<button class="btn teal" data-act="playvideo">🎬 Lås og spill svarvideo</button>`:''}
+      ${cur&&g.phase==='video'?`<button class="btn teal" data-act="reveal">⏭ Hopp over video, vis fasit</button>`:''}
+      ${cur&&(g.phase==='open'||g.phase==='locked')?`<button class="btn ${cur.video?'ghost':'teal'}" data-act="reveal">Vis fasit og svar${cur.video?' (uten video)':''}</button>`:''}
+      ${cur&&g.phase==='reveal'&&cur.video?`<button class="btn ghost" data-act="playvideo">🎬 Spill videoen igjen</button>`:''}
       ${cur&&g.phase==='reveal'?`<button class="btn ghost" data-act="show" data-q="${cur.id}">↺ Åpne spørsmålet igjen</button>`:''}
       <button class="btn ghost" data-act="phase" data-v="score">📊 Poengtavle</button>
       <button class="btn ghost" data-act="phase" data-v="winner">🏆 Kår vinner</button>
@@ -554,6 +570,7 @@ function openEditor(id){
   $('#e_txt').value=q.type==='tekst'?q.answer||'':'';
   $('#e_num').value=q.type==='tall'?q.answer??'':'';
   $('#e_tol').value=q.type==='tall'?q.tol??'':'';
+  $('#e_video').value=q.video||'';
   ed.showModal();
 }
 async function saveQuestion(id,q){
@@ -561,6 +578,7 @@ async function saveQuestion(id,q){
   if(q.type==='flervalg')pub.options=q.options;
   const sec={answer:String(q.answer)};
   if(q.type==='tall')sec.tol=Number(q.tol)||0;
+  if(q.video)sec.video=String(q.video).trim();
   await store.set('questions/'+id,pub);
   await store.set('secret/'+id,sec);
   if(S.revealed?.[id])await store.set('revealed/'+id,sec);
@@ -578,6 +596,8 @@ async function saveEditor(){
   }else if(type==='sannusann')q.answer=$('#e_tf').value;
   else if(type==='tekst'){q.answer=$('#e_txt').value.trim();if(!q.answer)return alert('Skriv inn minst ett godkjent svar.')}
   else{q.answer=$('#e_num').value.trim();if(!isFinite(num(q.answer)))return alert('Fasit må være et tall.');const t=$('#e_tol').value.trim();q.tol=t===''?0:num(t)}
+  q.video=$('#e_video').value.trim();
+  if(q.video&&!/^https?:\/\//i.test(q.video))return alert('Videolenken må starte med https://');
   const qs=questions();
   q.order=editId?S.questions[editId].order:(qs.length?Math.max(...qs.map(x=>x.order||0)):0)+1;
   try{await saveQuestion(editId||rid(),q);ed.close()}catch(e){alert('Kunne ikke lagre: '+e.message)}
@@ -614,8 +634,9 @@ document.addEventListener('click',async e=>{
       break}
     case 'show':gradeQ=qid;await store.remove('revealed/'+qid);await store.set('game',{phase:'open',qid,deadline:null});break;
     case 'timer':{const s=Math.max(3,Number($('#secs').value)||30);await store.set('game/deadline',now()+s*1000);break}
-    case 'lock':await store.update('game',{phase:'locked',deadline:null});break;
-    case 'reveal':{const sec=S.secret?.[g.qid];if(sec)await store.set('revealed/'+g.qid,sec);await store.update('game',{phase:'reveal',deadline:null});break}
+    case 'lock':await store.update('game',{phase:lockPhase(g.qid),deadline:null});break;
+    case 'playvideo':await store.update('game',{phase:'video',deadline:null});break;
+    case 'reveal':await doReveal(g.qid);break;
     case 'phase':await store.update('game',{phase:b.dataset.v,deadline:null});break;
     case 'grade':gradeQ=qid;render();break;
     case 'apply':{const q=qById(qid);await store.update('scores/'+qid,suggest(q,answersFor(qid)));break}
@@ -670,8 +691,8 @@ setInterval(()=>{
   document.querySelectorAll('[data-countdown]').forEach(n=>n.textContent=r==null?'':(r>0?r+' s':'Tiden er ute'));
   const ex=expired();if(ex!==lastExp){lastExp=ex;render()}
   const g=game();
-  if(isJudge()&&IS_ADMIN&&g.phase==='open'&&ex&&lockingFor!==g.deadline){
-    lockingFor=g.deadline;store.update('game',{phase:'locked',deadline:null}).catch(()=>{});
+  if((isJudge()||isStage())&&IS_ADMIN&&g.phase==='open'&&ex&&lockingFor!==g.deadline){
+    lockingFor=g.deadline;store.update('game',{phase:lockPhase(g.qid),deadline:null}).catch(()=>{});
   }
 },250);
 
@@ -687,6 +708,46 @@ function loop(){cx.clearRect(0,0,cv.width,cv.height);
   raf=requestAnimationFrame(loop)}
 function stopConfetti(){if(raf)cancelAnimationFrame(raf);raf=null;cx.clearRect(0,0,cv.width,cv.height)}
 
+/* ---------- Svarvideo på storskjermen ---------- */
+const vl=$('#videolayer');let vidKey=null,ytApi=null;
+function ytId(u){const m=String(u).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/))([\w-]{11})/);return m?m[1]:null}
+function loadYT(){return ytApi||(ytApi=new Promise(res=>{window.onYouTubeIframeAPIReady=()=>res(window.YT);loadScript('https://www.youtube.com/iframe_api')}))}
+function videoEnded(key){
+  if(key!==vidKey)return;
+  const g=game();
+  if(g.phase==='video'&&g.qid===key.split('|')[0]&&IS_ADMIN)doReveal(g.qid).catch(()=>{});
+}
+function playBtn(fn){const b=document.createElement('button');b.className='btn playbtn';b.textContent='▶ Spill av';b.onclick=()=>{b.remove();fn()};vl.appendChild(b);return b}
+async function syncVideo(){
+  const g=game(),q=g.qid&&qById(g.qid);
+  const want=isStage()&&g.phase==='video'&&q?.video?g.qid+'|'+q.video:null;
+  if(want===vidKey)return;
+  vidKey=want;vl.innerHTML='';vl.classList.toggle('on',!!want);
+  if(!want)return;
+  const key=want,id=ytId(q.video);
+  if(id){
+    const holder=document.createElement('div');holder.className='yt';vl.appendChild(holder);
+    const YT=await loadYT();if(key!==vidKey)return;
+    let btn=null;
+    const p=new YT.Player(holder,{videoId:id,playerVars:{autoplay:1,controls:0,rel:0,modestbranding:1,playsinline:1},
+      events:{onReady:e=>{e.target.playVideo();setTimeout(()=>{if(key===vidKey&&p.getPlayerState?.()!==1&&!btn)btn=playBtn(()=>p.playVideo())},1500)},
+              onStateChange:e=>{if(e.data===1&&btn){btn.remove();btn=null}if(e.data===0)videoEnded(key)}}});
+  }else{
+    const v=document.createElement('video');v.src=q.video;v.playsInline=true;v.autoplay=true;
+    v.onended=()=>videoEnded(key);v.onerror=()=>{vl.innerHTML='<div class="playbtn muted" style="text-align:center">Kunne ikke spille av videoen.<br>Trykk «Hopp over» i dommerpanelet.</div>'};
+    vl.appendChild(v);
+    v.play().catch(()=>playBtn(()=>v.play()));
+  }
+}
+/* Nettlesere spiller bare av lyd etter et klikk – be om ett klikk når storskjermen åpnes */
+function showUnlock(){
+  if(!isStage()||$('#unlock'))return;
+  const d=document.createElement('div');d.id='unlock';
+  d.innerHTML='<div><h2>Klikk for å starte storskjermen</h2><p class="muted">Slår på fullskjerm og lyd til svarvideoene.</p></div>';
+  d.onclick=()=>{d.remove();document.documentElement.requestFullscreen?.().catch(()=>{})};
+  document.body.appendChild(d);
+}
+
 /* Lag ser bare sitt eget svar – abonner på det for gjeldende spørsmål */
 let ansUnsub=null,ansQ;
 function syncOwnAnswer(){
@@ -696,7 +757,7 @@ function syncOwnAnswer(){
   if(q)ansUnsub=store.on(`answers/${q}/${UID}`,v=>{S.answers={[q]:v?{[UID]:v}:{}};render()},()=>{});
 }
 function onData(){
-  syncOwnAnswer();render();
+  syncOwnAnswer();render();syncVideo();
   const ph=game().phase;
   if(isStage()&&ph==='winner'&&lastPhase!=='winner')startConfetti();
   if(ph!=='winner')stopConfetti();
@@ -707,6 +768,7 @@ function startSubs(){
   for(const k of ['game','questions','revealed','scores','teams'])sub(k,k);
   if(IS_ADMIN){sub('secret','secret');sub('answers','answers')}
   BOOT='ready';render();
+  if(isStage()&&IS_ADMIN)showUnlock();
 }
 
 addEventListener('hashchange',()=>location.reload());
