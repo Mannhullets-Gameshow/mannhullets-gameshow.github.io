@@ -236,11 +236,13 @@ function makeDemoStore(){
   const emit=()=>subs.forEach(f=>f());
   const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}emit()};
   addEventListener('storage',e=>{if(e.key===KEY){state=load();emit()}});
-  return{demo:true,serverOffset:0,
+  const st={demo:true,serverOffset:0,
     on(p,cb){let last;const run=()=>{const v=getAt(state,p);const j=JSON.stringify(v===undefined?null:v);if(j!==last){last=j;cb(JSON.parse(j))}};subs.add(run);run();return()=>subs.delete(run)},
     async set(p,v){state=setAt(state,p,clone(v));save()},
     async update(p,o){for(const k in o)state=setAt(state,p+'/'+k,clone(o[k]));save()},
     async remove(p){state=setAt(state,p,null);save()}};
+  st.aon=(p,cb)=>st.on('_root/'+p,cb);st.aset=(p,v)=>st.set('_root/'+p,v);st.aremove=p=>st.remove('_root/'+p);
+  return st;
 }
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 async function makeFirebaseStore(cfg){
@@ -256,7 +258,10 @@ async function makeFirebaseStore(cfg){
     set:(p,v)=>r(p).set(clone(v)),
     update:(p,o)=>r(p).update(clone(o)),
     remove:p=>r(p).remove(),
-    canRead:p=>r(p).once('value').then(()=>true,()=>false)};
+    canRead:p=>r(p).once('value').then(()=>true,()=>false),
+    aon(p,cb,err){const ref=db.ref(p);const fn=s=>cb(s.val());ref.on('value',fn,e=>err&&err(e));return()=>ref.off('value',fn)},
+    aset:(p,v)=>db.ref(p).set(clone(v)),
+    aremove:p=>db.ref(p).remove()};
   db.ref('.info/serverTimeOffset').on('value',s=>{st.serverOffset=s.val()||0});
   return st;
 }
@@ -546,13 +551,21 @@ function renderJudge(){
     <div class="row" style="margin-top:14px"><button class="btn sm ghost" data-act="resetanswers">Nullstill svar og poeng</button>
     <button class="btn sm red" data-act="resetall">Nullstill alt (også lag)</button></div></div>`;
 
+  const admins=Object.entries(S.admins||{}).map(([k,a])=>({k,email:a?.email||k.replace(/,/g,'.')}));
+  const alist=store.demo?'':`<div class="card"><h3>Dommere</h3>
+    <p class="small muted" style="margin-top:0">Disse Google-kontoene kan styre showet, i tillegg til eieren. Bare eieren kan endre listen.</p>
+    ${admins.map(a=>`<div class="row" style="justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line)"><span>${esc(a.email)}</span>
+      <button class="btn sm ghost" data-act="deladmin" data-k="${esc(a.k)}">✕</button></div>`).join('')||'<div class="muted small">Ingen ekstra dommere ennå.</div>'}
+    <div class="row" style="margin-top:12px;flex-wrap:nowrap"><input id="newadmin" type="email" placeholder="navn@gmail.com" autocomplete="off">
+      <button class="btn sm" data-act="addadmin">Legg til</button></div></div>`;
+
   return `<div class="wrap judge">${demoBanner()}
     <div class="row" style="justify-content:space-between;margin-bottom:14px"><h1 style="margin:0">🎛️ Dommerpanel</h1>
       <span class="muted small">${USER?.email?esc(USER.email)+' · ':''}${store.demo?'':'<a href="#" data-act="logout">Logg ut</a>'}</span></div>
     ${control}
     <div class="cols" style="margin-top:16px">
       <div class="grid"><div class="card">${grading}</div>${qlist}</div>
-      <div class="grid">${tlist}</div>
+      <div class="grid">${tlist}${alist}</div>
     </div></div>`;
 }
 
@@ -647,6 +660,11 @@ document.addEventListener('click',async e=>{
     case 'editq':openEditor(qid);break;
     case 'edsave':await saveEditor();break;
     case 'edcancel':ed.close();break;
+    case 'addadmin':{const em=$('#newadmin').value.trim().toLowerCase();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em))return alert('Skriv inn en gyldig e-postadresse.');
+      try{await store.aset('admins/'+em.replace(/\./g,','),{email:em,added:now()});$('#newadmin').value=''}
+      catch(err){alert('Bare eieren av showet kan legge til dommere.')}break}
+    case 'deladmin':if(confirm('Fjerne denne dommeren?')){try{await store.aremove('admins/'+b.dataset.k)}catch(err){alert('Bare eieren av showet kan fjerne dommere.')}}break;
     case 'pickname':$('#e_videofile').click();break;
     case 'pickvideos':pickVideos();break;
     case 'delq':if(confirm('Slette dette spørsmålet og svarene på det?')){
@@ -676,6 +694,7 @@ document.addEventListener('keydown',e=>{
   if(e.key!=='Enter')return;
   if(e.target.id==='teamName')$('[data-act=join]')?.click();
   else if(e.target.id?.startsWith('ans_'))$('[data-act=submit]')?.click();
+  else if(e.target.id==='newadmin')$('[data-act=addadmin]')?.click();
 });
 $('#importfile').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
@@ -800,7 +819,7 @@ function onData(){
 function sub(path,key){store.on(path,v=>{S[key]=v||(key==='game'?null:{});onData()},()=>{})}
 function startSubs(){
   for(const k of ['game','questions','revealed','scores','teams'])sub(k,k);
-  if(IS_ADMIN){sub('secret','secret');sub('answers','answers')}
+  if(IS_ADMIN){sub('secret','secret');sub('answers','answers');store.aon('admins',v=>{S.admins=v||{};onData()},()=>{})}
   BOOT='ready';render();
   if(isStage()&&IS_ADMIN)showUnlock();
 }
