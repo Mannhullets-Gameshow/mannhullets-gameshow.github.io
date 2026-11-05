@@ -203,8 +203,10 @@ form[data-type=tall] .f-tall,form[data-type=tekst] .f-tekst,form[data-type=flerv
       <div class="small muted" style="margin-top:4px">Laget nærmest fasit får fulle poeng. Andre innenfor grensen får delpoeng etter hvor nærme de er. 0 eller tom = bare nærmeste får poeng.</div>
     </div>
     <label>Svarvideo (valgfritt)</label>
-    <input id="e_video" placeholder="YouTube-lenke eller lenke til videofil">
-    <div class="small muted" style="margin-top:4px">Spilles av på storskjermen når tiden er ute. Fasit og svar vises når videoen er ferdig. Tips: last opp på YouTube som «Unotert» (unlisted).</div>
+    <div class="row" style="flex-wrap:nowrap"><input id="e_video" placeholder="kronestykker.mp4 eller YouTube-lenke">
+      <button type="button" class="btn ghost sm" data-act="pickname" style="white-space:nowrap">📁 Velg fil</button></div>
+    <input type="file" id="e_videofile" accept="video/*" hidden>
+    <div class="small muted" style="margin-top:4px">Spilles av på storskjermen når tiden er ute, og fasiten vises når videoen er ferdig. Velger du en fil, lagres bare filnavnet. Selve filen velger du på storskjerm-PC-en når showet starter, så den lastes aldri opp.</div>
     <label>Poeng for riktig / nærmest</label>
     <input id="e_pts" type="number" min="0" step="1" value="3">
     <div class="small muted" style="margin-top:12px">🔒 Fasiten lagres skjult og vises ikke for lagene før du trykker «Vis fasit».</div>
@@ -433,7 +435,8 @@ function renderStage(){
   const g=game(),q=g.qid&&qById(g.qid),qs=questions(),ts=teams();
   const top=`<div class="top"><span><b>${esc(CONFIG.title)}</b>${CONFIG.subtitle?' · '+esc(CONFIG.subtitle):''}</span>
     <span>${q&&ACTIVE.includes(g.phase)?`Spørsmål ${qIndex(q.id)+1} av ${qs.length}`:`${ts.length} lag`}</span></div>`;
-  const fs=`<button class="btn ghost sm fsbtn" data-act="fullscreen">⛶ Fullskjerm</button>`;
+  const miss=missingFiles().length;
+  const fs=`<div class="fsbtn row" style="gap:6px">${neededFiles().length?`<button class="btn ghost sm" data-act="pickvideos">📁 Videoer${miss?` (${miss} mangler)`:' ✓'}</button>`:''}<button class="btn ghost sm" data-act="fullscreen">⛶ Fullskjerm</button></div>`;
   let main='';
   if(g.phase==='lobby'||(!q&&ACTIVE.includes(g.phase))){
     const url=CONFIG.lagLenke||baseUrl()+'#lag';
@@ -597,7 +600,7 @@ async function saveEditor(){
   else if(type==='tekst'){q.answer=$('#e_txt').value.trim();if(!q.answer)return alert('Skriv inn minst ett godkjent svar.')}
   else{q.answer=$('#e_num').value.trim();if(!isFinite(num(q.answer)))return alert('Fasit må være et tall.');const t=$('#e_tol').value.trim();q.tol=t===''?0:num(t)}
   q.video=$('#e_video').value.trim();
-  if(q.video&&!/^https?:\/\//i.test(q.video))return alert('Videolenken må starte med https://');
+  if(q.video&&/^(www\.|youtu)/i.test(q.video))q.video='https://'+q.video;
   const qs=questions();
   q.order=editId?S.questions[editId].order:(qs.length?Math.max(...qs.map(x=>x.order||0)):0)+1;
   try{await saveQuestion(editId||rid(),q);ed.close()}catch(e){alert('Kunne ikke lagre: '+e.message)}
@@ -644,6 +647,8 @@ document.addEventListener('click',async e=>{
     case 'editq':openEditor(qid);break;
     case 'edsave':await saveEditor();break;
     case 'edcancel':ed.close();break;
+    case 'pickname':$('#e_videofile').click();break;
+    case 'pickvideos':pickVideos();break;
     case 'delq':if(confirm('Slette dette spørsmålet og svarene på det?')){
       for(const p of ['questions','secret','revealed','answers','scores'])await store.remove(p+'/'+qid);
       if(g.qid===qid)await store.set('game',{phase:'lobby'})}break;
@@ -733,19 +738,48 @@ async function syncVideo(){
       events:{onReady:e=>{e.target.playVideo();setTimeout(()=>{if(key===vidKey&&p.getPlayerState?.()!==1&&!btn)btn=playBtn(()=>p.playVideo())},1500)},
               onStateChange:e=>{if(e.data===1&&btn){btn.remove();btn=null}if(e.data===0)videoEnded(key)}}});
   }else{
-    const v=document.createElement('video');v.src=q.video;v.playsInline=true;v.autoplay=true;
+    let src=q.video;
+    if(!/^https?:\/\//i.test(src)){
+      src=localVideos.get(baseName(src));
+      if(!src){
+        vl.innerHTML=`<div class="playbtn" style="text-align:center;font-size:1.2rem;width:min(90vw,640px)"><p>Videofilen <b>${esc(q.video)}</b> er ikke valgt på denne maskinen.</p><button class="btn" data-act="pickvideos">📁 Velg videofiler</button></div>`;
+        return;
+      }
+    }
+    const v=document.createElement('video');v.src=src;v.playsInline=true;v.autoplay=true;
     v.onended=()=>videoEnded(key);v.onerror=()=>{vl.innerHTML='<div class="playbtn muted" style="text-align:center">Kunne ikke spille av videoen.<br>Trykk «Hopp over» i dommerpanelet.</div>'};
     vl.appendChild(v);
     v.play().catch(()=>playBtn(()=>v.play()));
   }
 }
+/* Lokale videofiler: velges på storskjerm-PC-en, lastes aldri opp */
+const localVideos=new Map();
+const baseName=s=>String(s).split(/[\\/]/).pop().trim().toLowerCase();
+const neededFiles=()=>[...new Set(Object.values(S.secret||{}).map(s=>s?.video).filter(v=>v&&!/^https?:\/\//i.test(v)))];
+const missingFiles=()=>neededFiles().filter(f=>!localVideos.has(baseName(f)));
+const vpick=document.createElement('input');vpick.type='file';vpick.accept='video/*';vpick.multiple=true;vpick.hidden=true;vpick.id='vpick';document.body.appendChild(vpick);
+vpick.addEventListener('change',()=>{
+  for(const f of vpick.files){const k=baseName(f.name);if(localVideos.has(k))URL.revokeObjectURL(localVideos.get(k));localVideos.set(k,URL.createObjectURL(f))}
+  vpick.value='';vidKey=null;updateUnlock();render();syncVideo();
+});
+function pickVideos(){vpick.click()}
+$('#e_videofile').addEventListener('change',e=>{const f=e.target.files[0];if(f)$('#e_video').value=f.name;e.target.value=''});
+
 /* Nettlesere spiller bare av lyd etter et klikk – be om ett klikk når storskjermen åpnes */
+function updateUnlock(){
+  const d=$('#unlock');if(!d)return;
+  const need=neededFiles(),miss=missingFiles();
+  d.querySelector('.files').innerHTML=need.length?`
+    <p>${miss.length?`Velg videofilene til showet (${need.length-miss.length} av ${need.length} valgt):`:`✅ Alle ${need.length} videofiler er valgt.`}</p>
+    ${miss.length?`<p class="small muted">${miss.map(esc).join(' · ')}</p>`:''}
+    <button class="btn ${miss.length?'':'ghost'}" data-act="pickvideos">📁 Velg videofiler</button>`:'';
+}
 function showUnlock(){
   if(!isStage()||$('#unlock'))return;
   const d=document.createElement('div');d.id='unlock';
-  d.innerHTML='<div><h2>Klikk for å starte storskjermen</h2><p class="muted">Slår på fullskjerm og lyd til svarvideoene.</p></div>';
-  d.onclick=()=>{d.remove();document.documentElement.requestFullscreen?.().catch(()=>{})};
-  document.body.appendChild(d);
+  d.innerHTML='<div><div class="files" style="margin-bottom:28px"></div><button class="btn" style="font-size:1.4rem;padding:.9em 1.6em" data-start>▶ Start storskjermen</button><p class="muted">Slår på fullskjerm og lyd til svarvideoene.</p></div>';
+  d.querySelector('[data-start]').onclick=()=>{d.remove();document.documentElement.requestFullscreen?.().catch(()=>{})};
+  document.body.appendChild(d);updateUnlock();
 }
 
 /* Lag ser bare sitt eget svar – abonner på det for gjeldende spørsmål */
@@ -757,7 +791,7 @@ function syncOwnAnswer(){
   if(q)ansUnsub=store.on(`answers/${q}/${UID}`,v=>{S.answers={[q]:v?{[UID]:v}:{}};render()},()=>{});
 }
 function onData(){
-  syncOwnAnswer();render();syncVideo();
+  syncOwnAnswer();render();syncVideo();updateUnlock();
   const ph=game().phase;
   if(isStage()&&ph==='winner'&&lastPhase!=='winner')startConfetti();
   if(ph!=='winner')stopConfetti();
